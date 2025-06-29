@@ -5,12 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>行数ベース縦書きページ分割</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
+    <style>
+    .material-symbols-outlined {
+      font-variation-settings:
+      'FILL' 0,
+      'wght' 400,
+      'GRAD' 0,
+      'opsz' 24
+    }
+    </style>
     <style>
         html, body {
             margin: 0; padding: 0; height: 100%; width: 100%;
-            font-family: 'Noto Serif JP', serif; font-size: 16px; line-height: 1.8;
+            font-family: 'Noto Sans JP', 'Yu Gothic', 'Meiryo', sans-serif; font-size: 16px; line-height: 1.8;
+            font-feature-settings: "lnum" 1, "pnum" 1;
             letter-spacing: 0.05em; color: #333; display: flex;
         }
+
+        /* 本文（縦書きページ）を源ノ明朝で */
+        .page, .page .content, .page p, .page h3 {
+            font-family: 'Source Han Serif JP', 'Noto Serif JP', 'Yu Mincho', 'Hiragino Mincho ProN', 'MS PMincho', serif;
+        }
+        /* h2見出しはゴシック体で強調 */
+        .page h2 {
+            font-family: 'Noto Sans JP', 'Yu Gothic', 'Meiryo', sans-serif !important;
+            font-weight: bold;
+            font-size: 1.7em;
+            letter-spacing: 0.08em;
+        }
+
+        /* Google Fonts: 源ノ明朝（Source Han Serif JP）を読み込み */
+        @import url('https://fonts.googleapis.com/css2?family=Source+Han+Serif+JP:wght@400;700&display=swap');
         
         /* --- 昼モード（デフォルト） --- */
         body,
@@ -53,7 +79,7 @@
         #debug-panel {
             width: 300px; height: 100vh; overflow-y: auto;
             background-color: #f5f5f5; border-right: 2px solid #ccc;
-            padding: 10px; box-sizing: border-box;
+            padding: 10px;
         }
         
         #debug-info {
@@ -135,8 +161,9 @@
         
         #measure {
             position: absolute; top: -9999px; left: -9999px; visibility: hidden;
-            font-family: 'Noto Serif JP', serif; writing-mode: vertical-rl;
+            font-family: 'Noto Sans JP', 'Yu Gothic', 'Meiryo', sans-serif; writing-mode: vertical-rl;
             text-orientation: mixed;
+            font-feature-settings: "lnum" 1, "pnum" 1;
         }
 
         hr.section-separator {
@@ -212,7 +239,7 @@
             <div>処理中: <span id="current-element">-</span></div>
         </div>
         
-        <div id="step-controls">
+        <div id="step-controls">E
             <button id="step-btn">1ステップ実行</button>
             <button id="reset-btn">リセット</button>
             <button id="prev-page-btn">◀ 前ページ</button>
@@ -235,9 +262,15 @@
         <div id="viewer">
             <div id="book"></div>
             <div id="bottom-bar" class="control-bar hidden">
-                <button id="font-smaller" class="material-btn">A−</button>
-                <button id="font-bigger" class="material-btn">A＋</button>
-                <button id="toggle-night" class="material-btn">🌙</button>
+                <button id="font-smaller" class="material-btn" title="文字サイズを小さく">
+                  <span class="material-symbols-outlined">text_decrease</span>
+                </button>
+                <button id="font-bigger" class="material-btn" title="文字サイズを大きく">
+                  <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;">text_increase</span>
+                </button>
+                <button id="toggle-night" class="material-btn" title="ナイトモード切替">
+                  <span class="material-symbols-outlined">nights_stay</span>
+                </button>
                 <span id="page-indicator" style="margin-left:16px; font-size:1em;">
                     <span id="current-page-indicator">1</span> / <span id="total-page-indicator">1</span>
                 </span>
@@ -303,21 +336,57 @@ function toZenkaku(str) {
             const elements = Array.from(payload);
             elements.forEach(element => {
                 if (element.tagName === 'H2' || element.tagName === 'H3') {
+                    // h2/h3のテキスト抽出を強化
+                    let headingText = '';
+                    // 1. textContent
+                    if (element.textContent && element.textContent.trim() !== '') {
+                        headingText = element.textContent.trim();
+                    } else if (element.innerText && element.innerText.trim() !== '') {
+                        // 2. innerText
+                        headingText = element.innerText.trim();
+                    } else if (element.innerHTML && element.innerHTML.replace(/<[^>]+>/g, '').trim() !== '') {
+                        // 3. innerHTML (strip tags)
+                        headingText = element.innerHTML.replace(/<[^>]+>/g, '').trim();
+                    } else if (element.className && element.className.trim() !== '') {
+                        // 4. className fallback
+                        headingText = element.className;
+                    } else {
+                        // 5. default
+                        headingText = 'タイトルなし';
+                    }
+                    // 既に全角化されている場合は再変換しない
+                    // 半角英数字が含まれていればtoZenkaku
+                    const zenkakuHeading = /[A-Za-z0-9]/.test(headingText) ? toZenkaku(headingText) : headingText;
                     this.paragraphs.push({
                         type: 'heading',
                         tag: element.tagName.toLowerCase(),
-                        content: toZenkaku(element.textContent),
+                        content: zenkakuHeading,
                         hasIndent: false
                     });
                 } else if (element.tagName === 'P') {
-                    // 先頭の字下げ文字（全角・半角スペース・タブ等）を1文字削除
-                    let text = element.textContent.replace(/^[ \u3000\t]/, "");
-                    this.paragraphs.push({
-                        type: 'paragraph',
-                        tag: 'p',
-                        content: toZenkaku(text),
-                        hasIndent: true // 段落は字下げあり
-                    });
+                    // <p><br></p> のような空行を検出
+                    const isEmptyLine =
+                        (element.childNodes.length === 1 && element.childNodes[0].tagName === 'BR') ||
+                        (element.innerHTML.trim() === '<br>' || element.innerHTML.trim() === '' || element.textContent.replace(/[\s\u3000]/g, '') === '');
+                    if (isEmptyLine) {
+                        this.paragraphs.push({
+                            type: 'paragraph',
+                            tag: 'p',
+                            content: '',
+                            hasIndent: false, // 空行は字下げなし
+                            isEmpty: true
+                        });
+                    } else {
+                        // 先頭の字下げ文字（全角・半角スペース・タブ等）を1文字削除
+                        let text = element.textContent.replace(/^[ \u3000\t]/, "");
+                        this.paragraphs.push({
+                            type: 'paragraph',
+                            tag: 'p',
+                            content: toZenkaku(text),
+                            hasIndent: true,
+                            isEmpty: false
+                        });
+                    }
                 } else if (element.tagName === 'HR' && element.classList.contains('section-separator')) {
                     this.paragraphs.push({
                         type: 'separator',
@@ -329,7 +398,7 @@ function toZenkaku(str) {
             });
             this.log(`段落抽出完了: ${this.paragraphs.length}個の段落`);
             this.paragraphs.forEach((para, i) => {
-                this.log(`${i + 1}: ${para.type} "${para.content.substring(0, 20)}..."`);
+                this.log(`${i + 1}: ${para.type} \"${para.content ? para.content.substring(0, 20) : ''}...\"`);
             });
         }
 
@@ -393,10 +462,18 @@ function toZenkaku(str) {
             if (this.totalPagesSpan) {
                 this.totalPagesSpan.textContent = this.pages.length;
             }
+            // ボトムバーのトータルページも更新
+            const totalPageIndicator = document.getElementById('total-page-indicator');
+            if (totalPageIndicator) totalPageIndicator.textContent = this.pages.length.toString();
         }
         displayCurrentPage() {
             if (this.pages.length === 0) {
                 this.log('ページがありません');
+                // ページインジケータもリセット
+                const currentPageIndicator = document.getElementById('current-page-indicator');
+                const totalPageIndicator = document.getElementById('total-page-indicator');
+                if (currentPageIndicator) currentPageIndicator.textContent = '0';
+                if (totalPageIndicator) totalPageIndicator.textContent = '0';
                 return;
             }
 
@@ -406,6 +483,9 @@ function toZenkaku(str) {
             if (this.currentPageSpan) {
                 this.currentPageSpan.textContent = this.currentPageIndex + 1;
             }
+            // ボトムバーの現在ページも更新
+            const currentPageIndicator = document.getElementById('current-page-indicator');
+            if (currentPageIndicator) currentPageIndicator.textContent = (this.currentPageIndex + 1).toString();
         }
 
         nextPage() {
@@ -497,8 +577,7 @@ function toZenkaku(str) {
 
                 const currentPara = this.paragraphs[this.currentParagraphIndex];
 
-                // ページま
-                // たぎ時のバッファ
+                // ページまたぎ時のバッファ
                 if (!this._paragraphBuffer) {
                     this._paragraphBuffer = currentPara.content.substring(this.currentParagraphContent.length);
                 }
@@ -515,6 +594,29 @@ function toZenkaku(str) {
                 let lines = [];
                 let pageFull = false;
                 let startContentWidth = 0;
+
+                // 空行や見出し・セパレータは一発で処理
+                if (currentPara.type !== 'paragraph' || currentPara.isEmpty) {
+                    // ページ先頭で空行の場合はスキップ（出力しない）
+                    if (currentPara.isEmpty && this.completedParagraphs.length === 0) {
+                        this.log('ページ先頭の空行をスキップ');
+                        this.currentParagraphIndex++;
+                        this.currentParagraphContent = '';
+                        this._paragraphBuffer = null;
+                        continue;
+                    }
+                    const finalHTML = this.generateHTML(
+                        { ...currentPara, hasIndent: this.currentParagraphHasIndent },
+                        this.currentParagraphContent
+                    );
+                    const finalAllHTML = this.completedParagraphs.join('') + finalHTML;
+                    this.displayCurrentContent(finalAllHTML);
+                    this.completedParagraphs.push(finalHTML);
+                    this.currentParagraphIndex++;
+                    this.currentParagraphContent = '';
+                    this._paragraphBuffer = null;
+                    continue;
+                }
 
                 while (this._paragraphBuffer.length > 0 && !pageFull) {
                     let line = '';
@@ -598,7 +700,16 @@ function toZenkaku(str) {
 
                     // currentParagraphContentは進めた状態で
                     // _paragraphBufferは残りを保持
-                    this.currentParagraphContent = '';
+                    // ただし、段落が分断されていない場合はcurrentParagraphContentをリセットし、次ページで重複しないようにする
+                    if (!this._paragraphBuffer || this._paragraphBuffer.length === 0) {
+                        // 段落が分断されていない（全部収まった）場合は次ページで重複しないように進める
+                        this.currentParagraphIndex++;
+                        this.currentParagraphContent = '';
+                        this._paragraphBuffer = null;
+                    } else {
+                        // 分断された場合はcurrentParagraphContentのみリセット
+                        this.currentParagraphContent = '';
+                    }
                     this.log(`🔄 改ページ完了: バッファ残り="${this._paragraphBuffer}"`);
                     continue; // ←再帰の代わりにループ継続
                 }
@@ -660,9 +771,14 @@ function toZenkaku(str) {
 
         generateHTML(paragraph, content) {
             if (paragraph.type === 'heading') {
-                return `<${paragraph.tag}>${content}</${paragraph.tag}>`;
+                // headingはparagraph.contentを常に使う（currentParagraphContentは使わない）
+                const headingText = (!paragraph.content || paragraph.content.trim() === "") ? "&nbsp;" : paragraph.content;
+                return `<${paragraph.tag}><span>${headingText}</span></${paragraph.tag}>`;
             } else if (paragraph.type === 'separator') {
                 return `<hr class="section-separator">`;
+            } else if (paragraph.isEmpty) {
+                // 空行は <p class="empty-line"><br></p> で出力
+                return `<p class="empty-line"><br></p>`;
             } else {
                 const className = paragraph.hasIndent ? '' : 'no-indent-p';
                 return `<p class="${className}">${content}</p>`;
@@ -797,7 +913,9 @@ function toZenkaku(str) {
                         }
                     });
                     this.extractParagraphs();
-                    this.regeneratePages()
+                    this.regeneratePages();
+                    this.currentPageIndex = 0;
+                    this.displayCurrentPage();
                     this.log('外部HTML読込成功: div.js-novel-text.p-novel__text の直下要素を読み込みました');
                 } else {
                     this.log('指定タグ(div.js-novel-text.p-novel__text)が見つかりません');

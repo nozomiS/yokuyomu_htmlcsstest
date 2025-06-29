@@ -120,6 +120,9 @@
         .content {
             width: auto; height: 100%; padding: 0;
             writing-mode: vertical-rl; text-orientation: mixed;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         
         .page p { margin: 0; text-indent: 1em; }
@@ -134,6 +137,16 @@
             position: absolute; top: -9999px; left: -9999px; visibility: hidden;
             font-family: 'Noto Serif JP', serif; writing-mode: vertical-rl;
             text-orientation: mixed;
+        }
+
+        hr.section-separator {
+            border: none;
+            border-left: 2px solid #aaa;
+            height: 80%;
+            width: 0;
+            margin: 0 16px;
+            display: block;
+            align-self: center;
         }
 
         /* 下部コントロールバー */
@@ -195,7 +208,7 @@
         <div id="debug-info">
             <div>最大行数: <span id="max-lines">-</span>行</div>
             <div>現在行数: <span id="current-lines">-</span>行</div>
-            <div>現在ページ: <span id="current-page">1</span> / <span id="total-pages">1</span></div>
+            <div>現在ページ: <span id="current-page">1</span> / <span id="total-pages">1</div>
             <div>処理中: <span id="current-element">-</span></div>
         </div>
         
@@ -206,6 +219,14 @@
             <button id="next-page-btn">次ページ ▶</button>
         </div>
         
+        <!-- ▼ここから追加 -->
+        <div style="margin:10px 0;">
+            <input type="file" id="fileInput" accept=".html">
+            <input type="text" id="selectorInput" placeholder="例: .js-novel-text" style="width:120px;">
+            <button id="loadHtmlBtn">外部HTML読込</button>
+        </div>
+        <!-- ▲ここまで追加 -->
+
         <div id="debug-log"></div>
         <button id="copy-log-btn">ログをコピー</button>
     </div>
@@ -225,6 +246,13 @@
     </div>
 
     <script>
+// 半角英数字を全角に変換する関数
+function toZenkaku(str) {
+    return str.replace(/[A-Za-z0-9]/g, function(s) {
+        return String.fromCharCode(s.charCodeAt(0) + 0xFEE0);
+    });
+}
+
     class LineCountDebug {
         constructor() {
             this.viewer = document.getElementById('viewer');
@@ -270,32 +298,43 @@
             }, 100);
         }
 
-        extractParagraphs() {
+        extractParagraphsFromPayLoad(payload) {
             this.paragraphs = [];
-            const elements = Array.from(this.source.children);
-            
+            const elements = Array.from(payload);
             elements.forEach(element => {
                 if (element.tagName === 'H2' || element.tagName === 'H3') {
                     this.paragraphs.push({
                         type: 'heading',
                         tag: element.tagName.toLowerCase(),
-                        content: element.textContent,
+                        content: toZenkaku(element.textContent),
                         hasIndent: false
                     });
                 } else if (element.tagName === 'P') {
+                    // 先頭の字下げ文字（全角・半角スペース・タブ等）を1文字削除
+                    let text = element.textContent.replace(/^[ \u3000\t]/, "");
                     this.paragraphs.push({
                         type: 'paragraph',
                         tag: 'p',
-                        content: element.textContent,
+                        content: toZenkaku(text),
                         hasIndent: true // 段落は字下げあり
+                    });
+                } else if (element.tagName === 'HR' && element.classList.contains('section-separator')) {
+                    this.paragraphs.push({
+                        type: 'separator',
+                        tag: 'hr',
+                        content: '',
+                        hasIndent: false
                     });
                 }
             });
-            
             this.log(`段落抽出完了: ${this.paragraphs.length}個の段落`);
             this.paragraphs.forEach((para, i) => {
                 this.log(`${i + 1}: ${para.type} "${para.content.substring(0, 20)}..."`);
             });
+        }
+
+        extractParagraphs() {
+            this.extractParagraphsFromPayLoad(this.source.children);
         }
 
         setupMeasure() {
@@ -426,9 +465,9 @@
                 const deltaY = endY - startY;
                 if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
                     if (deltaX > 0) {
-                        this.prevPage();
-                    } else {
                         this.nextPage();
+                    } else {
+                        this.prevPage();
                     }
                 }
             });
@@ -458,7 +497,8 @@
 
                 const currentPara = this.paragraphs[this.currentParagraphIndex];
 
-                // ページまたぎ時のバッファ
+                // ページま
+                // たぎ時のバッファ
                 if (!this._paragraphBuffer) {
                     this._paragraphBuffer = currentPara.content.substring(this.currentParagraphContent.length);
                 }
@@ -621,6 +661,8 @@
         generateHTML(paragraph, content) {
             if (paragraph.type === 'heading') {
                 return `<${paragraph.tag}>${content}</${paragraph.tag}>`;
+            } else if (paragraph.type === 'separator') {
+                return `<hr class="section-separator">`;
             } else {
                 const className = paragraph.hasIndent ? '' : 'no-indent-p';
                 return `<p class="${className}">${content}</p>`;
@@ -712,7 +754,70 @@
             document.getElementById('toggle-night').addEventListener('click', () => {
                 document.body.classList.toggle('night-mode');
             });
-            // ↑ここまで追加
+
+            document.getElementById('loadHtmlBtn').addEventListener('click', async () => {
+                const fileInput = document.getElementById('fileInput');
+                const file = fileInput.files[0];
+                if (!file) {
+                    this.log('ファイルを選択してください');
+                    return;
+                }
+                const text = await file.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, "text/html");
+                const title = doc.querySelectorAll('h1.p-novel__title.p-novel__title--rensai');
+                // クラスが両方一致するdivを取得
+                const targets = doc.querySelectorAll('div.js-novel-text.p-novel__text');
+                this.log('div.js-novel-text.p-novel__text タグを取得しました: ' + targets.length + '件');
+                if (targets) {
+                    // その直下の要素をsource-contentにセット
+                    this.source.innerHTML = '';
+
+                    // タイトル取得時も全角化
+                    if (title.length > 0) {
+                        title.forEach(t => {
+                            this.log('タイトルを取得しました: ' + toZenkaku(t.textContent));
+                            const titleElement = document.createElement('h2');
+                            titleElement.className = t.className;
+                            titleElement.textContent = toZenkaku(t.textContent);
+                            this.source.appendChild(titleElement);
+                        });
+                    }
+
+                    targets.forEach((target, idx) => {
+                        // 直下の子要素をsource-contentに追加
+                        Array.from(target.children).forEach(el => {
+                            this.source.appendChild(el.cloneNode(true));
+                        });
+                        // セクションセパレータを挿入（最後のセクション以外）
+                        if (idx < targets.length - 1) {
+                            const hr = document.createElement('hr');
+                            hr.className = 'section-separator';
+                            this.source.appendChild(hr);
+                        }
+                    });
+                    this.extractParagraphs();
+                    this.regeneratePages()
+                    this.log('外部HTML読込成功: div.js-novel-text.p-novel__text の直下要素を読み込みました');
+                } else {
+                    this.log('指定タグ(div.js-novel-text.p-novel__text)が見つかりません');
+                }
+            });
+        }
+
+        loadEpisodeFromFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                this.source.innerHTML = content;
+                this.extractParagraphs();
+                this.reset();
+                this.log('エピソード読み込み完了');
+            };
+            reader.onerror = (e) => {
+                this.log('ファイル読み込みエラー: ' + e.target.error.message);
+            };
+            reader.readAsText(file);
         }
 
         // 文字サイズ変更用メソッド

@@ -188,7 +188,6 @@
         constructor() {
             this.viewer = document.getElementById('viewer');
             this.book = document.getElementById('book');
-            this.measure = document.getElementById('measure');
             this.debugLog = document.getElementById('debug-log');
             this.source = document.getElementById('source-content');
             
@@ -261,7 +260,6 @@
         setupMeasure() {
             try {
                 const viewerStyle = window.getComputedStyle(this.viewer);
-                const fontSize = parseFloat(viewerStyle.fontSize);
                 const lineHeightValue = viewerStyle.lineHeight;
                 const lineHeightPx = parseFloat(lineHeightValue);
                 
@@ -397,6 +395,13 @@
         stepExecution() {
             this.log(`🔍 stepExecution開始: paragraphIndex=${this.currentParagraphIndex}, content="${this.currentParagraphContent}"`);
 
+            let parentContentWidth = 0;
+            if (this.book.querySelector('.page')) {
+                parentContentWidth = this.book.querySelector('.page').scrollWidth;
+            } else {
+                parentContentWidth = this.viewer.clientWidth - 40; // 余白を引いた幅
+            }
+
             while (true) {
                 if (this.currentParagraphIndex >= this.paragraphs.length) {
                     // ★最後のページが未追加なら追加
@@ -433,6 +438,8 @@
                     if (this.book.querySelector('.content')) {
                         startContentWidth = this.book.querySelector('.content').scrollWidth;
                     }
+                    let lastContentWidth = 0;
+                    let lineWidth = 0;
 
                     // 1文字ずつ追加して改行判定
                     for (let i = 0; i < this._paragraphBuffer.length; i++) {
@@ -446,18 +453,18 @@
                         const allHTML = this.completedParagraphs.join('') + currentHTML;
                         this.displayCurrentContent(allHTML);
 
-                        const contentDiv = this.book.querySelector('.content');
-                        const contentWidth = contentDiv.scrollWidth;
+                        lastContentWidth = this.book.querySelector('.content').scrollWidth;
 
                         // 改行検出
-                        if (i > 0 && contentWidth > startContentWidth) {
+                        if (i > 0 && lastContentWidth > startContentWidth) {
                             // オーバーフロー文字をバッファに戻す
                             line = line.slice(0, -1);
                             this._paragraphBuffer = this._paragraphBuffer.slice(i);
+                            lineWidth = lastContentWidth - startContentWidth;
                             break;
                         }
 
-                        if (i === 0) startContentWidth = contentWidth;
+                        if (i === 0) startContentWidth = lastContentWidth;
 
                         // バッファを使い切った場合
                         if (i === this._paragraphBuffer.length - 1) {
@@ -465,7 +472,9 @@
                         }
                     }
 
-                    lines.push(line);
+                    if (line.length > 0) {
+                        lines.push(line);
+                    }
 
                     // ページ内容を仮生成して行数判定
                     const pageHTML = this.generateHTML(
@@ -476,7 +485,7 @@
                     this.displayCurrentContent(allHTML);
 
                     this.calculateCurrentLines();
-                    if (this.totalLineCount >= this.maxAllowedLines) {
+                    if ((lastContentWidth + lineWidth * 2) >= parentContentWidth) {
                         pageFull = true;
                     }
                 }
@@ -493,7 +502,7 @@
                 this.displayCurrentContent(finalAllHTML);
 
                 // 改ページ判定
-                if (this.totalLineCount >= this.maxAllowedLines) {
+                if (pageFull) {
                     this.log(`🚨 改ページ必要！ ${this.totalLineCount}行 >= ${this.maxAllowedLines}行`);
                     this.addPage(finalAllHTML);
 

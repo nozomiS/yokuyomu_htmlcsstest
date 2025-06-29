@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>行数ベース縦書きページ分割</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400&display=swap" rel="stylesheet">
+    <style>
+        html, body {
+            margin: 0; padding: 0; height: 100%; width: 100%;
+            font-family: 'Noto Serif JP', serif; font-size: 16px; line-height: 1.8;
+            letter-spacing: 0.05em; color: #333; display: flex;
+        }
+        
+        #debug-panel {
+            width: 300px; height: 100vh; overflow-y: auto;
+            background-color: #f5f5f5; border-right: 2px solid #ccc;
+            padding: 10px; box-sizing: border-box;
+        }
+        
+        #debug-info {
+            background: white; border: 1px solid #ddd; border-radius: 5px;
+            padding: 8px; margin-bottom: 10px; font-family: monospace; font-size: 11px;
+        }
+        
+        #step-controls button {
+            margin-right: 5px; padding: 6px 10px;
+            border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 11px;
+        }
+        
+        #debug-log {
+            background: white; border: 1px solid #ddd; border-radius: 5px;
+            padding: 8px; height: 250px; overflow-y: auto; font-family: monospace; font-size: 10px;
+        }
+        
+        #copy-log-btn {
+            margin-top: 5px; padding: 4px 8px;
+            border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 10px;
+            background: #fff;
+        }
+        
+        #viewer-container {
+            flex: 1; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; padding: 20px;
+            background-color: #f0f0f0;
+        }
+        
+        #viewer {
+            width: 70vw; height: 70vh; max-width: 500px;
+            background-color: #fafafa; border: 1px solid #ccc;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; overflow: hidden;
+        }
+        
+        #book { 
+            height: 100%; width: 100%; position: relative; 
+        }
+        
+        .page {
+            height: 100%; width: 100%; position: absolute; top: 0; left: 0;
+            padding: 30px 20px; box-sizing: border-box;
+            writing-mode: vertical-rl; text-orientation: mixed;
+            overflow: hidden; background: white;
+            visibility: hidden;
+        }
+        
+        .page.visible {
+            visibility: visible;
+        }
+        
+        .content {
+            width: auto; height: 100%; padding: 0;
+            writing-mode: vertical-rl; text-orientation: mixed;
+        }
+        
+        .page p { margin: 0; text-indent: 1em; }
+        .page h2, .page h3 { margin: 0; text-indent: 0; }
+        .page .no-indent-p { text-indent: 0; }
+        
+        #measure {
+            position: absolute; top: -9999px; left: -9999px; visibility: hidden;
+            font-family: 'Noto Serif JP', serif; writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+
+        /* 下部コントロールバー */
+        .control-bar {
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #fff;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+            padding: 10px 0;
+            z-index: 1000;
+            transition: transform 0.2s;
+        }
+        .control-bar.hidden {
+            transform: translateY(100%);
+            pointer-events: none;
+            opacity: 0;
+        }
+        .material-btn {
+            background: #f5f5f5;
+            border: none;
+            border-radius: 50%;
+            margin: 0 12px;
+            width: 48px; height: 48px;
+            font-size: 1.3em;
+            color: #333;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            transition: background 0.2s;
+        }
+        .material-btn:active {
+            background: #e0e0e0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* ナイトモードスタイル */
+        body.night-mode {
+            background: #222;
+            color: #eee;
+        }
+        body.night-mode #viewer,
+        body.night-mode .page {
+            background: #222;
+            color: #eee;
+        }
+        body.night-mode .control-bar {
+            background: #333;
+        }
+        body.night-mode .material-btn {
+            background: #444;
+            color: #eee;
+        }
+    </style>
+</head>
+<body>
+    <div id="source-content" style="display: none;">
+        <h2>吾輩は猫である</h2>
+        <p>吾輩は猫である。名前はまだ無い。</p>
+        <p>どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。吾輩はここで始めて人間というものを見た。しかもあとで聞くとそれは書生という人間中で一番獰悪な種族であったそうだ。この書生というのは時々我々を捕えて煮て食うという話である。しかしその当時は何という考もなかったから別段恐しいとも思わなかった。ただ彼の掌に載せられてスーと持ち上げられた時何だかフワフワした感じがあったばかりである。掌の上で少し落ちついて書生の顔を見たのがいわゆる人間というものの見始であろう。この時妙なものだと思った感じが今でも残っている。第一毛をもって装飾されべきはずの顔がつるつるしてまるで薬缶だ。その後猫にもだいぶ逢ったがこんな片輪には一度も出会わした事がない。のみならず顔の真中が余りに突起している。</p>
+        <p>そうしてその穴の中から時々ぷうぷうと煙を吹く。どうも咽せぽくて実に弱った。これが人間の飲む煙草というものである事はようやくこの頃知った。</p>
+        <p>行数調整の行です。</p>
+        <p>さらに続きの段落です。これは新しい段落として表示されるはずです。この段落も、ページ先頭でなければ行頭が字下げされます。長い文章になるように文字数を増やして、複数行にわたる段落の処理をテストします。縦書きでの改行動作が正しく検出され、ページ分割のロジックが期待通りに動作することを確認したいと思います。</p>
+        <p>短めの段落もいくつか追加してみます。</p>
+        <p>これでどうでしょうか。</p>
+        <h3>新しい章の開始</h3>
+        <p>ここから新しい章が始まる場合を想定しています。この段落も、ページの途中で開始した場合は字下げされますが、ページ先頭に来た場合は字下げされません。見出しの後の段落は適切に処理されるでしょうか。長めのテキストを用意して、複数行にわたる表示をテストします。</p>
+        <p>長い段落の続きのテキストです。このテキストがページをまたぐと、次のページの先頭に来た際に字下げされないように処理します。これにより、読書体験がより自然になります。縦書きレイアウトでの改行検出とページ分割が正確に動作し、実用的なビューワーを作成できることを目指しています。文字数をさらに増やして、より多くの行数での動作確認を行います。</p>
+    </div>
+
+    <div id="debug-panel">
+        <h3>デバッグ情報</h3>
+        <div id="debug-info">
+            <div>最大行数: <span id="max-lines">-</span>行</div>
+            <div>現在行数: <span id="current-lines">-</span>行</div>
+            <div>現在ページ: <span id="current-page">1</span> / <span id="total-pages">1</span></div>
+            <div>処理中: <span id="current-element">-</span></div>
+        </div>
+        
+        <div id="step-controls">
+            <button id="step-btn">1ステップ実行</button>
+            <button id="reset-btn">リセット</button>
+            <button id="prev-page-btn">◀ 前ページ</button>
+            <button id="next-page-btn">次ページ ▶</button>
+        </div>
+        
+        <div id="debug-log"></div>
+        <button id="copy-log-btn">ログをコピー</button>
+    </div>
+
+    <div id="viewer-container">
+        <div id="measure"></div>
+        <div id="viewer"><div id="book"></div></div>
+        <div id="bottom-bar" class="control-bar hidden">
+            <button id="font-smaller" class="material-btn">A−</button>
+            <button id="font-bigger" class="material-btn">A＋</button>
+            <button id="toggle-night" class="material-btn">🌙</button>
+        </div>
+    </div>
+
+    <script>
+    class LineCountDebug {
+        constructor() {
+            this.viewer = document.getElementById('viewer');
+            this.book = document.getElementById('book');
+            this.measure = document.getElementById('measure');
+            this.debugLog = document.getElementById('debug-log');
+            this.source = document.getElementById('source-content');
+            
+            // 安全にDOM要素を取得
+            this.maxLinesSpan = document.getElementById('max-lines');
+            this.currentLinesSpan = document.getElementById('current-lines');
+            this.currentElementSpan = document.getElementById('current-element');
+            this.currentPageSpan = document.getElementById('current-page');
+            this.totalPagesSpan = document.getElementById('total-pages');
+            
+            this.maxAllowedLines = 0;
+            this.currentLineCount = 1;
+            
+            // ページ管理
+            this.pages = []; // 各ページのHTML内容
+            this.currentPageIndex = 0;
+            
+            // 元のHTMLから段落データを抽出
+            this.paragraphs = [];
+            this.currentParagraphIndex = 0;
+            this.currentParagraphContent = ''; // 現在の段落の内容のみ
+            this.completedParagraphs = []; // 完了した段落のHTML
+            this.totalLineCount = 1; // ページ全体での累積行数
+            
+            this.currentParagraphHasIndent = true; // ←追加
+            
+            this.init();
+        }
+
+        init() {
+            // 元のHTMLから段落を抽出
+            this.extractParagraphs();
+            
+            // DOM要素のサイズが確定するまで少し待つ
+            setTimeout(() => {
+                this.setupMeasure();
+                this.initEventListeners();
+                this.log('初期化完了');
+            }, 100);
+        }
+
+        extractParagraphs() {
+            this.paragraphs = [];
+            const elements = Array.from(this.source.children);
+            
+            elements.forEach(element => {
+                if (element.tagName === 'H2' || element.tagName === 'H3') {
+                    this.paragraphs.push({
+                        type: 'heading',
+                        tag: element.tagName.toLowerCase(),
+                        content: element.textContent,
+                        hasIndent: false
+                    });
+                } else if (element.tagName === 'P') {
+                    this.paragraphs.push({
+                        type: 'paragraph',
+                        tag: 'p',
+                        content: element.textContent,
+                        hasIndent: true // 段落は字下げあり
+                    });
+                }
+            });
+            
+            this.log(`段落抽出完了: ${this.paragraphs.length}個の段落`);
+            this.paragraphs.forEach((para, i) => {
+                this.log(`${i + 1}: ${para.type} "${para.content.substring(0, 20)}..."`);
+            });
+        }
+
+        setupMeasure() {
+            try {
+                const viewerStyle = window.getComputedStyle(this.viewer);
+                const fontSize = parseFloat(viewerStyle.fontSize);
+                const lineHeightValue = viewerStyle.lineHeight;
+                const lineHeightPx = parseFloat(lineHeightValue);
+                
+                // サイズが0の場合はフォールバック値を使用
+                const viewerWidth = this.viewer.clientWidth || 500;
+                const viewerHeight = this.viewer.clientHeight || 400;
+                const contentWidth = Math.max(viewerWidth - 40, 200); // 最低200px確保
+                const contentHeight = Math.max(viewerHeight - 60, 200); // 最低200px確保
+                
+                // 横幅から最大行数を計算
+                this.maxAllowedLines = Math.floor(contentWidth / lineHeightPx);
+                
+                if (this.maxLinesSpan) {
+                    this.maxLinesSpan.textContent = this.maxAllowedLines;
+                }
+                
+                this.log(`計算値: maxLines=${this.maxAllowedLines}行`);
+            } catch (error) {
+                this.log(`エラー: ${error.message}`);
+            }
+        }
+
+        log(message) {
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            this.debugLog.appendChild(entry);
+            this.debugLog.scrollTop = this.debugLog.scrollHeight;
+        }
+
+        copyLog() {
+            const logText = Array.from(this.debugLog.children)
+                .map(entry => entry.textContent)
+                .join('\n');
+            
+            navigator.clipboard.writeText(logText).then(() => {
+                this.log('ログをクリップボードにコピーしました');
+            }).catch(err => {
+                this.log('コピーに失敗しました: ' + err);
+            });
+        }
+
+        displayCurrentContent(content) {
+            // 現在のページがない場合は作成
+            if (this.pages.length === 0) {
+                this.addPage('');
+            }
+            
+            // 現在のページの内容を更新
+            const currentPage = this.pages[this.currentPageIndex];
+            currentPage.innerHTML = `<div class="content">${content}</div>`;
+        }
+
+        addPage(content) {
+            const pageElement = document.createElement('div');
+            pageElement.className = 'page';
+            pageElement.innerHTML = `<div class="content">${content}</div>`;
+            // 先頭に挿入
+            if (this.book.firstChild) {
+                this.book.insertBefore(pageElement, this.book.firstChild);
+            } else {
+                this.book.appendChild(pageElement);
+            }
+            this.pages.unshift(pageElement); // ← 先頭に追加
+            this.updatePageDisplay();
+            this.log(`ページ${this.pages.length}を作成しました`);
+        }
+
+        updatePageDisplay() {
+            // 全ページを非表示にして、現在のページのみ表示
+            this.pages.forEach((page, index) => {
+                page.classList.toggle('visible', index === this.currentPageIndex);
+            });
+            
+            // UI更新
+            if (this.currentPageSpan) {
+                this.currentPageSpan.textContent = this.currentPageIndex + 1;
+            }
+            if (this.totalPagesSpan) {
+                this.totalPagesSpan.textContent = this.pages.length;
+            }
+        }
+
+        nextPage() {
+            if (this.currentPageIndex < this.pages.length - 1) {
+                this.currentPageIndex++;
+                this.updatePageDisplay();
+                this.log(`次ページ: ${this.currentPageIndex + 1}/${this.pages.length}`);
+            }
+        }
+
+        prevPage() {
+            if (this.currentPageIndex > 0) {
+                this.currentPageIndex--;
+                this.updatePageDisplay();
+                this.log(`前ページ: ${this.currentPageIndex + 1}/${this.pages.length}`);
+            }
+        }
+
+        setupSwipeEvents() {
+            let startX = 0;
+            let startY = 0;
+            let isMouseDown = false;
+
+            // タッチイベント
+            this.viewer.addEventListener('touchstart', (e) => {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            });
+
+            this.viewer.addEventListener('touchend', (e) => {
+                const endX = e.changedTouches[0].clientX;
+                const endY = e.changedTouches[0].clientY;
+                const deltaX = endX - startX;
+                const deltaY = endY - startY;
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+                    if (deltaX > 0) {
+                        this.prevPage();
+                    } else {
+                        this.nextPage();
+                    }
+                }
+            });
+
+            // マウスイベント
+            this.viewer.addEventListener('mousedown', (e) => {
+                isMouseDown = true;
+                startX = e.clientX;
+                startY = e.clientY;
+            });
+
+            this.viewer.addEventListener('mouseup', (e) => {
+                if (!isMouseDown) return;
+                isMouseDown = false;
+                const endX = e.clientX;
+                const endY = e.clientY;
+                const deltaX = endX - startX;
+                const deltaY = endY - startY;
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+                    if (deltaX > 0) {
+                        this.prevPage();
+                    } else {
+                        this.nextPage();
+                    }
+                }
+            });
+        }
+
+        stepExecution() {
+            this.log(`🔍 stepExecution開始: paragraphIndex=${this.currentParagraphIndex}, content="${this.currentParagraphContent}"`);
+
+            if (this.currentParagraphIndex >= this.paragraphs.length) {
+                this.log('全段落処理完了');
+                return;
+            }
+
+            const currentPara = this.paragraphs[this.currentParagraphIndex];
+
+            // ページまたぎ時のバッファ
+            if (!this._paragraphBuffer) {
+                this._paragraphBuffer = currentPara.content.substring(this.currentParagraphContent.length);
+            }
+
+            // ページ先頭の字下げ制御
+            if (this.currentParagraphContent === '') {
+                if (this.completedParagraphs.length === 0 && this.pages.length > 0) {
+                    this.currentParagraphHasIndent = false;
+                } else {
+                    this.currentParagraphHasIndent = currentPara.hasIndent;
+                }
+            }
+
+            let lines = [];
+            let pageFull = false;
+
+            while (this._paragraphBuffer.length > 0 && !pageFull) {
+                let line = '';
+                let startContentWidth = 0;
+                if (this.book.querySelector('.content')) {
+                    startContentWidth = this.book.querySelector('.content').scrollWidth;
+                }
+
+                // 1文字ずつ追加して改行判定
+                for (let i = 0; i < this._paragraphBuffer.length; i++) {
+                    line += this._paragraphBuffer[i];
+
+                    // 仮HTML生成
+                    const currentHTML = this.generateHTML(
+                        { ...currentPara, hasIndent: this.currentParagraphHasIndent },
+                        this.currentParagraphContent + lines.join('') + line
+                    );
+                    const allHTML = this.completedParagraphs.join('') + currentHTML;
+                    this.displayCurrentContent(allHTML);
+
+                    const contentDiv = this.book.querySelector('.content');
+                    const contentWidth = contentDiv.scrollWidth;
+
+                    // 改行検出
+                    if (i > 0 && contentWidth > startContentWidth) {
+                        // オーバーフロー文字をバッファに戻す
+                        line = line.slice(0, -1);
+                        this._paragraphBuffer = this._paragraphBuffer.slice(i);
+                        break;
+                    }
+
+                    if (i === 0) startContentWidth = contentWidth;
+
+                    // バッファを使い切った場合
+                    if (i === this._paragraphBuffer.length - 1) {
+                        this._paragraphBuffer = '';
+                    }
+                }
+
+                lines.push(line);
+
+                // ページ内容を仮生成して行数判定
+                const pageHTML = this.generateHTML(
+                    { ...currentPara, hasIndent: this.currentParagraphHasIndent },
+                    this.currentParagraphContent + lines.join('')
+                );
+                const allHTML = this.completedParagraphs.join('') + pageHTML;
+                this.displayCurrentContent(allHTML);
+
+                this.calculateCurrentLines();
+                if (this.totalLineCount >= this.maxAllowedLines) {
+                    pageFull = true;
+                }
+            }
+
+            // ページに追加した分だけcurrentParagraphContentを進める
+            this.currentParagraphContent += lines.join('');
+
+            // ページ内容を確定
+            const finalHTML = this.generateHTML(
+                { ...currentPara, hasIndent: this.currentParagraphHasIndent },
+                this.currentParagraphContent
+            );
+            const finalAllHTML = this.completedParagraphs.join('') + finalHTML;
+            this.displayCurrentContent(finalAllHTML);
+
+            // 改ページ判定
+            if (this.totalLineCount >= this.maxAllowedLines) {
+                this.log(`🚨 改ページ必要！ ${this.totalLineCount}行 >= ${this.maxAllowedLines}行`);
+                this.addPage(finalAllHTML);
+
+                // 次ページの準備
+                this.completedParagraphs = [];
+                this.totalLineCount = 1;
+                this.currentParagraphHasIndent = false; // ★分断パラグラフは字下げなし
+
+                // currentParagraphContentは進めた状態で
+                // _paragraphBufferは残りを保持
+                this.currentParagraphContent = '';
+                this.log(`🔄 改ページ完了: バッファ残り="${this._paragraphBuffer}"`);
+                this.stepExecution();
+                return;
+            }
+
+            // 段落終了
+            if (!this._paragraphBuffer || this._paragraphBuffer.length === 0) {
+                this.completedParagraphs.push(finalHTML);
+                this.log(`段落${this.currentParagraphIndex + 1}完了: ${finalHTML}`);
+
+                this.currentParagraphIndex++;
+                this.currentParagraphContent = '';
+                this._paragraphBuffer = null;
+                this.log(`🔍 段落完了でリセット: paragraphIndex=${this.currentParagraphIndex}, content="${this.currentParagraphContent}"`);
+                this.stepExecution();
+                return;
+            }
+
+            // 1行進めたので終了（次のstepで残りを処理）
+        }
+
+        calculateCurrentLines() {
+            const pageElement = this.book.querySelector('.content');
+            if (!pageElement) {
+                this.totalLineCount = 1;
+                return;
+            }
+
+            const allTextNodes = [];
+            
+            function collectTextNodes(node) {
+                if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '') {
+                    allTextNodes.push(node);
+                } else {
+                    for (let child of node.childNodes) {
+                        collectTextNodes(child);
+                    }
+                }
+            }
+            collectTextNodes(pageElement);
+            
+            if (allTextNodes.length > 0) {
+                const range = document.createRange();
+                range.setStart(allTextNodes[0], 0);
+                range.setEnd(allTextNodes[allTextNodes.length - 1], allTextNodes[allTextNodes.length - 1].textContent.length);
+                const rangeRect = range.getBoundingClientRect();
+                const rangeWidth = rangeRect.width;
+                this.totalLineCount = Math.ceil(rangeWidth / 28.8);
+                
+                this.log(`行数計算: 幅=${rangeWidth.toFixed(2)}px, 行数=${this.totalLineCount}行`);
+            } else {
+                this.totalLineCount = 1;
+            }
+            
+            if (this.currentLinesSpan) {
+                this.currentLinesSpan.textContent = this.totalLineCount;
+            }
+        }
+
+        generateHTML(paragraph, content) {
+            if (paragraph.type === 'heading') {
+                return `<${paragraph.tag}>${content}</${paragraph.tag}>`;
+            } else {
+                const className = paragraph.hasIndent ? '' : 'no-indent-p';
+                return `<p class="${className}">${content}</p>`;
+            }
+        }
+
+        // 3. ページ再生成用メソッド
+        regeneratePages() {
+            this.resetPagesAndState();
+            this.setupMeasure();
+            this.stepExecution();
+        }
+
+                // reset()も共通リセットを利用
+        reset() {
+            this.resetPagesAndState();
+            this.debugLog.innerHTML = '';
+            this.log('リセット完了');
+            this.setupMeasure();
+            this.stepExecution();
+        }
+
+        resetPagesAndState() {
+            this.currentParagraphIndex = 0;
+            this.currentParagraphContent = '';
+            this.completedParagraphs = [];
+            this.totalLineCount = 1;
+            this.pages = [];
+            this.currentPageIndex = 0;
+            this.book.innerHTML = '';
+            this._paragraphBuffer = null;
+            this.currentParagraphHasIndent = true;
+        }
+
+        initEventListeners() {
+            document.getElementById('step-btn').addEventListener('click', () => {
+                this.stepExecution();
+            });
+
+            document.getElementById('reset-btn').addEventListener('click', () => {
+                this.reset();
+            });
+
+            document.getElementById('copy-log-btn').addEventListener('click', () => {
+                this.copyLog();
+            });
+
+            document.getElementById('prev-page-btn').addEventListener('click', () => {
+                this.prevPage();
+            });
+
+            document.getElementById('next-page-btn').addEventListener('click', () => {
+                this.nextPage();
+            });
+
+            // スワイプイベントも初期化時に設定
+            this.setupSwipeEvents();
+
+            // ↓ここから追加
+            const viewer = this.viewer;
+            const bottomBar = document.getElementById('bottom-bar');
+            let barVisible = false;
+
+            // 中央付近タップでバー表示/非表示
+            viewer.addEventListener('click', (e) => {
+                const rect = viewer.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                // 中央30%エリア
+                if (
+                    x > rect.width * 0.35 && x < rect.width * 0.65 &&
+                    y > rect.height * 0.35 && y < rect.height * 0.65
+                ) {
+                    barVisible = !barVisible;
+                    bottomBar.classList.toggle('hidden', !barVisible);
+                }
+            });
+
+            // 文字サイズ変更
+            document.getElementById('font-bigger').addEventListener('click', () => {
+                this.changeFontSize(1);
+            });
+            document.getElementById('font-smaller').addEventListener('click', () => {
+                this.changeFontSize(-1);
+            });
+
+            // ナイトモード切替（色は後で指定）
+            document.getElementById('toggle-night').addEventListener('click', () => {
+                document.body.classList.toggle('night-mode');
+            });
+            // ↑ここまで追加
+        }
+
+        // 文字サイズ変更用メソッド
+        changeFontSize(delta) {
+            const viewer = this.viewer;
+            const style = window.getComputedStyle(viewer);
+            let fontSize = parseFloat(style.fontSize) || 16;
+            fontSize = Math.max(10, Math.min(36, fontSize + delta));
+            viewer.style.fontSize = fontSize + 'px';
+            this.log(`文字サイズ: ${fontSize}px`);
+
+            // ページ再生成
+            this.regeneratePages();
+        }
+    }
+
+    window.addEventListener('load', () => { new LineCountDebug(); });
+    </script>
+</body>
+</html>

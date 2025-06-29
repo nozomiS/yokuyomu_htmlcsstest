@@ -188,6 +188,7 @@
         constructor() {
             this.viewer = document.getElementById('viewer');
             this.book = document.getElementById('book');
+            this.measure = document.getElementById('measure');
             this.debugLog = document.getElementById('debug-log');
             this.source = document.getElementById('source-content');
             
@@ -260,6 +261,7 @@
         setupMeasure() {
             try {
                 const viewerStyle = window.getComputedStyle(this.viewer);
+                const fontSize = parseFloat(viewerStyle.fontSize);
                 const lineHeightValue = viewerStyle.lineHeight;
                 const lineHeightPx = parseFloat(lineHeightValue);
                 
@@ -395,6 +397,7 @@
         stepExecution() {
             this.log(`🔍 stepExecution開始: paragraphIndex=${this.currentParagraphIndex}, content="${this.currentParagraphContent}"`);
 
+            let lineWidth = 28.8;
             let parentContentWidth = 0;
             if (this.book.querySelector('.page')) {
                 parentContentWidth = this.book.querySelector('.page').scrollWidth;
@@ -431,15 +434,17 @@
 
                 let lines = [];
                 let pageFull = false;
+                let startContentWidth = 0;
 
                 while (this._paragraphBuffer.length > 0 && !pageFull) {
                     let line = '';
+                    let prevWidth = 0;
+
                     let startContentWidth = 0;
                     if (this.book.querySelector('.content')) {
                         startContentWidth = this.book.querySelector('.content').scrollWidth;
                     }
                     let lastContentWidth = 0;
-                    let lineWidth = 0;
 
                     // 1文字ずつ追加して改行判定
                     for (let i = 0; i < this._paragraphBuffer.length; i++) {

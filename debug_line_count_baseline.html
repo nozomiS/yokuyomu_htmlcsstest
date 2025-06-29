@@ -397,132 +397,133 @@
         stepExecution() {
             this.log(`🔍 stepExecution開始: paragraphIndex=${this.currentParagraphIndex}, content="${this.currentParagraphContent}"`);
 
-            if (this.currentParagraphIndex >= this.paragraphs.length) {
-                // ★最後のページが未追加なら追加
-                const finalHTML = this.completedParagraphs.join('');
-                if (finalHTML && (this.pages.length === 0 || this.pages[this.pages.length - 1] !== finalHTML)) {
-                    this.addPage(finalHTML);
-                }
-                this.log('全段落処理完了');
-                return;
-            }
-
-            const currentPara = this.paragraphs[this.currentParagraphIndex];
-
-            // ページまたぎ時のバッファ
-            if (!this._paragraphBuffer) {
-                this._paragraphBuffer = currentPara.content.substring(this.currentParagraphContent.length);
-            }
-
-            // ページ先頭の字下げ制御
-            if (this.currentParagraphContent === '') {
-                if (this.completedParagraphs.length === 0 && this.pages.length > 0) {
-                    this.currentParagraphHasIndent = false;
-                } else {
-                    this.currentParagraphHasIndent = currentPara.hasIndent;
-                }
-            }
-
-            let lines = [];
-            let pageFull = false;
-
-            while (this._paragraphBuffer.length > 0 && !pageFull) {
-                let line = '';
-                let startContentWidth = 0;
-                if (this.book.querySelector('.content')) {
-                    startContentWidth = this.book.querySelector('.content').scrollWidth;
+            while (true) {
+                if (this.currentParagraphIndex >= this.paragraphs.length) {
+                    // ★最後のページが未追加なら追加
+                    const finalHTML = this.completedParagraphs.join('');
+                    if (finalHTML && (this.pages.length === 0 || this.pages[this.pages.length - 1] !== finalHTML)) {
+                        this.addPage(finalHTML);
+                    }
+                    this.log('全段落処理完了');
+                    break;
                 }
 
-                // 1文字ずつ追加して改行判定
-                for (let i = 0; i < this._paragraphBuffer.length; i++) {
-                    line += this._paragraphBuffer[i];
+                const currentPara = this.paragraphs[this.currentParagraphIndex];
 
-                    // 仮HTML生成
-                    const currentHTML = this.generateHTML(
+                // ページまたぎ時のバッファ
+                if (!this._paragraphBuffer) {
+                    this._paragraphBuffer = currentPara.content.substring(this.currentParagraphContent.length);
+                }
+
+                // ページ先頭の字下げ制御
+                if (this.currentParagraphContent === '') {
+                    if (this.completedParagraphs.length === 0 && this.pages.length > 0) {
+                        this.currentParagraphHasIndent = false;
+                    } else {
+                        this.currentParagraphHasIndent = currentPara.hasIndent;
+                    }
+                }
+
+                let lines = [];
+                let pageFull = false;
+
+                while (this._paragraphBuffer.length > 0 && !pageFull) {
+                    let line = '';
+                    let startContentWidth = 0;
+                    if (this.book.querySelector('.content')) {
+                        startContentWidth = this.book.querySelector('.content').scrollWidth;
+                    }
+
+                    // 1文字ずつ追加して改行判定
+                    for (let i = 0; i < this._paragraphBuffer.length; i++) {
+                        line += this._paragraphBuffer[i];
+
+                        // 仮HTML生成
+                        const currentHTML = this.generateHTML(
+                            { ...currentPara, hasIndent: this.currentParagraphHasIndent },
+                            this.currentParagraphContent + lines.join('') + line
+                        );
+                        const allHTML = this.completedParagraphs.join('') + currentHTML;
+                        this.displayCurrentContent(allHTML);
+
+                        const contentDiv = this.book.querySelector('.content');
+                        const contentWidth = contentDiv.scrollWidth;
+
+                        // 改行検出
+                        if (i > 0 && contentWidth > startContentWidth) {
+                            // オーバーフロー文字をバッファに戻す
+                            line = line.slice(0, -1);
+                            this._paragraphBuffer = this._paragraphBuffer.slice(i);
+                            break;
+                        }
+
+                        if (i === 0) startContentWidth = contentWidth;
+
+                        // バッファを使い切った場合
+                        if (i === this._paragraphBuffer.length - 1) {
+                            this._paragraphBuffer = '';
+                        }
+                    }
+
+                    lines.push(line);
+
+                    // ページ内容を仮生成して行数判定
+                    const pageHTML = this.generateHTML(
                         { ...currentPara, hasIndent: this.currentParagraphHasIndent },
-                        this.currentParagraphContent + lines.join('') + line
+                        this.currentParagraphContent + lines.join('')
                     );
-                    const allHTML = this.completedParagraphs.join('') + currentHTML;
+                    const allHTML = this.completedParagraphs.join('') + pageHTML;
                     this.displayCurrentContent(allHTML);
 
-                    const contentDiv = this.book.querySelector('.content');
-                    const contentWidth = contentDiv.scrollWidth;
-
-                    // 改行検出
-                    if (i > 0 && contentWidth > startContentWidth) {
-                        // オーバーフロー文字をバッファに戻す
-                        line = line.slice(0, -1);
-                        this._paragraphBuffer = this._paragraphBuffer.slice(i);
-                        break;
-                    }
-
-                    if (i === 0) startContentWidth = contentWidth;
-
-                    // バッファを使い切った場合
-                    if (i === this._paragraphBuffer.length - 1) {
-                        this._paragraphBuffer = '';
+                    this.calculateCurrentLines();
+                    if (this.totalLineCount >= this.maxAllowedLines) {
+                        pageFull = true;
                     }
                 }
 
-                lines.push(line);
+                // ページに追加した分だけcurrentParagraphContentを進める
+                this.currentParagraphContent += lines.join('');
 
-                // ページ内容を仮生成して行数判定
-                const pageHTML = this.generateHTML(
+                // ページ内容を確定
+                const finalHTML = this.generateHTML(
                     { ...currentPara, hasIndent: this.currentParagraphHasIndent },
-                    this.currentParagraphContent + lines.join('')
+                    this.currentParagraphContent
                 );
-                const allHTML = this.completedParagraphs.join('') + pageHTML;
-                this.displayCurrentContent(allHTML);
+                const finalAllHTML = this.completedParagraphs.join('') + finalHTML;
+                this.displayCurrentContent(finalAllHTML);
 
-                this.calculateCurrentLines();
+                // 改ページ判定
                 if (this.totalLineCount >= this.maxAllowedLines) {
-                    pageFull = true;
+                    this.log(`🚨 改ページ必要！ ${this.totalLineCount}行 >= ${this.maxAllowedLines}行`);
+                    this.addPage(finalAllHTML);
+
+                    // 次ページの準備
+                    this.completedParagraphs = [];
+                    this.totalLineCount = 1;
+                    this.currentParagraphHasIndent = false; // ★分断パラグラフは字下げなし
+
+                    // currentParagraphContentは進めた状態で
+                    // _paragraphBufferは残りを保持
+                    this.currentParagraphContent = '';
+                    this.log(`🔄 改ページ完了: バッファ残り="${this._paragraphBuffer}"`);
+                    continue; // ←再帰の代わりにループ継続
                 }
+
+                // 段落終了
+                if (!this._paragraphBuffer || this._paragraphBuffer.length === 0) {
+                    this.completedParagraphs.push(finalHTML);
+                    this.log(`段落${this.currentParagraphIndex + 1}完了: ${finalHTML}`);
+
+                    this.currentParagraphIndex++;
+                    this.currentParagraphContent = '';
+                    this._paragraphBuffer = null;
+                    this.log(`🔍 段落完了でリセット: paragraphIndex=${this.currentParagraphIndex}, content="${this.currentParagraphContent}"`);
+                    continue; // ←再帰の代わりにループ継続
+                }
+
+                // 1行進めたので終了（次のstepで残りを処理）
+                break;
             }
-
-            // ページに追加した分だけcurrentParagraphContentを進める
-            this.currentParagraphContent += lines.join('');
-
-            // ページ内容を確定
-            const finalHTML = this.generateHTML(
-                { ...currentPara, hasIndent: this.currentParagraphHasIndent },
-                this.currentParagraphContent
-            );
-            const finalAllHTML = this.completedParagraphs.join('') + finalHTML;
-            this.displayCurrentContent(finalAllHTML);
-
-            // 改ページ判定
-            if (this.totalLineCount >= this.maxAllowedLines) {
-                this.log(`🚨 改ページ必要！ ${this.totalLineCount}行 >= ${this.maxAllowedLines}行`);
-                this.addPage(finalAllHTML);
-
-                // 次ページの準備
-                this.completedParagraphs = [];
-                this.totalLineCount = 1;
-                this.currentParagraphHasIndent = false; // ★分断パラグラフは字下げなし
-
-                // currentParagraphContentは進めた状態で
-                // _paragraphBufferは残りを保持
-                this.currentParagraphContent = '';
-                this.log(`🔄 改ページ完了: バッファ残り="${this._paragraphBuffer}"`);
-                this.stepExecution();
-                return;
-            }
-
-            // 段落終了
-            if (!this._paragraphBuffer || this._paragraphBuffer.length === 0) {
-                this.completedParagraphs.push(finalHTML);
-                this.log(`段落${this.currentParagraphIndex + 1}完了: ${finalHTML}`);
-
-                this.currentParagraphIndex++;
-                this.currentParagraphContent = '';
-                this._paragraphBuffer = null;
-                this.log(`🔍 段落完了でリセット: paragraphIndex=${this.currentParagraphIndex}, content="${this.currentParagraphContent}"`);
-                this.stepExecution();
-                return;
-            }
-
-            // 1行進めたので終了（次のstepで残りを処理）
         }
 
         calculateCurrentLines() {

@@ -304,50 +304,35 @@
         }
 
         displayCurrentContent(content) {
-            // 現在のページがない場合は作成
-            if (this.pages.length === 0) {
-                this.addPage('');
-            }
-            
-            // 現在のページの内容を更新
-            const currentPage = this.pages[this.currentPageIndex];
-            currentPage.innerHTML = `<div class="content">${content}</div>`;
+            this.book.innerHTML = `<div class='page visible'><div class="content">${content}</div></div>`;
         }
 
         addPage(content) {
-            const pageElement = document.createElement('div');
-            pageElement.className = 'page';
-            pageElement.innerHTML = `<div class="content">${content}</div>`;
-            // 先頭に挿入
-            if (this.book.firstChild) {
-                this.book.insertBefore(pageElement, this.book.firstChild);
-            } else {
-                this.book.appendChild(pageElement);
-            }
-            this.pages.unshift(pageElement); // ← 先頭に追加
-            this.updatePageDisplay();
+            this.pages.push(content)
             this.log(`ページ${this.pages.length}を作成しました`);
-        }
 
-        updatePageDisplay() {
-            // 全ページを非表示にして、現在のページのみ表示
-            this.pages.forEach((page, index) => {
-                page.classList.toggle('visible', index === this.currentPageIndex);
-            });
-            
-            // UI更新
-            if (this.currentPageSpan) {
-                this.currentPageSpan.textContent = this.currentPageIndex + 1;
-            }
             if (this.totalPagesSpan) {
                 this.totalPagesSpan.textContent = this.pages.length;
+            }
+        }
+        displayCurrentPage() {
+            if (this.pages.length === 0) {
+                this.log('ページがありません');
+                return;
+            }
+
+            const content = this.pages[this.currentPageIndex];
+            this.book.innerHTML = `<div class='page visible'><div class="content">${content}</div></div>`;
+
+            if (this.currentPageSpan) {
+                this.currentPageSpan.textContent = this.currentPageIndex + 1;
             }
         }
 
         nextPage() {
             if (this.currentPageIndex < this.pages.length - 1) {
                 this.currentPageIndex++;
-                this.updatePageDisplay();
+                this.displayCurrentPage();
                 this.log(`次ページ: ${this.currentPageIndex + 1}/${this.pages.length}`);
             }
         }
@@ -355,7 +340,7 @@
         prevPage() {
             if (this.currentPageIndex > 0) {
                 this.currentPageIndex--;
-                this.updatePageDisplay();
+                this.displayCurrentPage();
                 this.log(`前ページ: ${this.currentPageIndex + 1}/${this.pages.length}`);
             }
         }
@@ -413,6 +398,11 @@
             this.log(`🔍 stepExecution開始: paragraphIndex=${this.currentParagraphIndex}, content="${this.currentParagraphContent}"`);
 
             if (this.currentParagraphIndex >= this.paragraphs.length) {
+                // ★最後のページが未追加なら追加
+                const finalHTML = this.completedParagraphs.join('');
+                if (finalHTML && (this.pages.length === 0 || this.pages[this.pages.length - 1] !== finalHTML)) {
+                    this.addPage(finalHTML);
+                }
                 this.log('全段落処理完了');
                 return;
             }
@@ -595,7 +585,7 @@
             this.debugLog.innerHTML = '';
             this.log('リセット完了');
             this.setupMeasure();
-            this.stepExecution();
+            this.displayCurrentPage();
         }
 
         resetPagesAndState() {
@@ -613,6 +603,7 @@
         initEventListeners() {
             document.getElementById('step-btn').addEventListener('click', () => {
                 this.stepExecution();
+                this.displayCurrentPage();
             });
 
             document.getElementById('reset-btn').addEventListener('click', () => {
@@ -680,6 +671,7 @@
 
             // ページ再生成
             this.regeneratePages();
+            this.displayCurrentPage();
         }
     }
 

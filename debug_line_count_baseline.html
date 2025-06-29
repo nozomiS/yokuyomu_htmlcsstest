@@ -12,6 +12,44 @@
             letter-spacing: 0.05em; color: #333; display: flex;
         }
         
+        /* --- 昼モード（デフォルト） --- */
+        body,
+        #viewer,
+        .page,
+        #book,
+        .control-bar,
+        #bottom-bar {
+            background: #f5ede3;
+            color: #3a3632;
+        }
+        .material-btn {
+            background: #ede5d7;
+            color: #3a3632;
+        }
+        #debug-panel {
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        /* --- 夜モード --- */
+        body.night-mode,
+        body.night-mode #viewer,
+        body.night-mode .page,
+        body.night-mode #book,
+        body.night-mode .control-bar,
+        body.night-mode #bottom-bar {
+            background: #444542;
+            color: #e7e5e1;
+        }
+        body.night-mode .material-btn {
+            background: #575753;
+            color: #e7e5e1;
+        }
+        body.night-mode #debug-panel {
+            background: #333;
+            color: #e7e5e1;
+        }
+        
         #debug-panel {
             width: 300px; height: 100vh; overflow-y: auto;
             background-color: #f5f5f5; border-right: 2px solid #ccc;
@@ -42,15 +80,27 @@
         #viewer-container {
             flex: 1; display: flex; flex-direction: column;
             justify-content: center; align-items: center; padding: 20px;
-            background-color: #f0f0f0;
         }
         
         #viewer {
             width: 70vw; height: 70vh; max-width: 500px;
-            background-color: #fafafa; border: 1px solid #ccc;
+            border: 1px solid #ccc;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; overflow: hidden;
         }
-        
+        #bottom-bar, .control-bar {
+            position: absolute; /* ★fixed→absoluteに変更 */
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #fafafa;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.18);
+            padding: 10px 0;
+            z-index: 1000;
+            transition: transform 0.2s;
+        }
         #book { 
             height: 100%; width: 100%; position: relative; 
         }
@@ -59,7 +109,7 @@
             height: 100%; width: 100%; position: absolute; top: 0; left: 0;
             padding: 30px 20px; box-sizing: border-box;
             writing-mode: vertical-rl; text-orientation: mixed;
-            overflow: hidden; background: white;
+            overflow: hidden;
             visibility: hidden;
         }
         
@@ -73,7 +123,11 @@
         }
         
         .page p { margin: 0; text-indent: 1em; }
-        .page h2, .page h3 { margin: 0; text-indent: 0; }
+        .page h2 {
+            margin: 0; text-indent: 0;
+            text-align: center; font-size: 1.5em; font-weight: bold;
+        }
+        .page h3 { margin: 0; text-indent: 0; }
         .page .no-indent-p { text-indent: 0; }
         
         #measure {
@@ -109,7 +163,7 @@
             font-size: 1.3em;
             color: #333;
             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-            transition: background 0.2s;
+            transition: 0.2s;
         }
         .material-btn:active {
             background: #e0e0e0;
@@ -119,23 +173,6 @@
             display: none;
         }
 
-        /* ナイトモードスタイル */
-        body.night-mode {
-            background: #222;
-            color: #eee;
-        }
-        body.night-mode #viewer,
-        body.night-mode .page {
-            background: #222;
-            color: #eee;
-        }
-        body.night-mode .control-bar {
-            background: #333;
-        }
-        body.night-mode .material-btn {
-            background: #444;
-            color: #eee;
-        }
     </style>
 </head>
 <body>
@@ -174,12 +211,16 @@
     </div>
 
     <div id="viewer-container">
-        <div id="measure"></div>
-        <div id="viewer"><div id="book"></div></div>
-        <div id="bottom-bar" class="control-bar hidden">
-            <button id="font-smaller" class="material-btn">A−</button>
-            <button id="font-bigger" class="material-btn">A＋</button>
-            <button id="toggle-night" class="material-btn">🌙</button>
+        <div id="viewer">
+            <div id="book"></div>
+            <div id="bottom-bar" class="control-bar hidden">
+                <button id="font-smaller" class="material-btn">A−</button>
+                <button id="font-bigger" class="material-btn">A＋</button>
+                <button id="toggle-night" class="material-btn">🌙</button>
+                <span id="page-indicator" style="margin-left:16px; font-size:1em;">
+                    <span id="current-page-indicator">1</span> / <span id="total-page-indicator">1</span>
+                </span>
+            </div>
         </div>
     </div>
 
@@ -188,7 +229,6 @@
         constructor() {
             this.viewer = document.getElementById('viewer');
             this.book = document.getElementById('book');
-            this.measure = document.getElementById('measure');
             this.debugLog = document.getElementById('debug-log');
             this.source = document.getElementById('source-content');
             

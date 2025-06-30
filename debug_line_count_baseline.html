@@ -6,7 +6,42 @@
     <title>行数ベース縦書きページ分割</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" />
     <style>
+        /* 上部バー */
+        #top-bar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 54px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #fafafa;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+            z-index: 1001;
+            padding: 0 16px;
+            transition: transform 0.2s;
+        }
+        #top-bar.hidden {
+            transform: translateY(-100%);
+            pointer-events: none;
+            opacity: 0;
+        }
+        #top-bar .material-symbols-outlined, #top-bar .material-symbols-rounded {
+            font-size: 2em;
+            cursor: pointer;
+            user-select: none;
+        }
+        #top-bar-title {
+            flex: 1 1 auto;
+            text-align: center;
+            font-size: 1.1em;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0 16px;
+        }
     .material-symbols-outlined {
       font-variation-settings:
       'FILL' 0,
@@ -216,6 +251,31 @@
     </style>
 </head>
 <body>
+
+    <div id="viewer-container">
+        <div id="viewer">
+            <div id="top-bar" class="hidden">
+                <span id="topbar-menu" class="material-symbols-outlined" title="メニュー">menu</span>
+                <span id="top-bar-title">タイトル</span>
+                <span id="topbar-browser" class="material-symbols-outlined" title="ブラウザで開く">open_in_browser</span>
+            </div>
+            <div id="book"></div>
+            <div id="bottom-bar" class="control-bar hidden">
+                <button id="font-smaller" class="material-btn" title="文字サイズを小さく">
+                  <span class="material-symbols-outlined">text_decrease</span>
+                </button>
+                <button id="font-bigger" class="material-btn" title="文字サイズを大きく">
+                  <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;">text_increase</span>
+                </button>
+                <button id="toggle-night" class="material-btn" title="ナイトモード切替">
+                  <span class="material-symbols-outlined">nights_stay</span>
+                </button>
+                <span id="page-indicator" style="margin-left:16px; font-size:1em;">
+                    <span id="current-page-indicator">1</span> / <span id="total-page-indicator">1</span>
+                </span>
+            </div>
+        </div>
+    </div>
     <div id="source-content" style="display: none;">
         <h2>吾輩は猫である</h2>
         <p>吾輩は猫である。名前はまだ無い。</p>
@@ -258,25 +318,7 @@
         <button id="copy-log-btn">ログをコピー</button>
     </div>
 
-    <div id="viewer-container">
-        <div id="viewer">
-            <div id="book"></div>
-            <div id="bottom-bar" class="control-bar hidden">
-                <button id="font-smaller" class="material-btn" title="文字サイズを小さく">
-                  <span class="material-symbols-outlined">text_decrease</span>
-                </button>
-                <button id="font-bigger" class="material-btn" title="文字サイズを大きく">
-                  <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;">text_increase</span>
-                </button>
-                <button id="toggle-night" class="material-btn" title="ナイトモード切替">
-                  <span class="material-symbols-outlined">nights_stay</span>
-                </button>
-                <span id="page-indicator" style="margin-left:16px; font-size:1em;">
-                    <span id="current-page-indicator">1</span> / <span id="total-page-indicator">1</span>
-                </span>
-            </div>
-        </div>
-    </div>
+    <!-- viewer-container/viewer/top-bar/book/bottom-bar are now grouped together above -->
 
     <script>
 // 半角英数字を全角に変換する関数
@@ -287,11 +329,15 @@ function toZenkaku(str) {
 }
 
     class LineCountDebug {
+        title = '';
         constructor() {
             this.viewer = document.getElementById('viewer');
             this.book = document.getElementById('book');
             this.debugLog = document.getElementById('debug-log');
             this.source = document.getElementById('source-content');
+
+            this.topBar = document.getElementById('top-bar');
+            this.topBarTitle = document.getElementById('top-bar-title');
             
             // 安全にDOM要素を取得
             this.maxLinesSpan = document.getElementById('max-lines');
@@ -305,6 +351,7 @@ function toZenkaku(str) {
             
             // ページ管理
             this.pages = []; // 各ページのHTML内容
+            this.pageMeta = []; // 各ページの{startId, endId}
             this.currentPageIndex = 0;
             
             // 元のHTMLから段落データを抽出
@@ -322,7 +369,6 @@ function toZenkaku(str) {
         init() {
             // 元のHTMLから段落を抽出
             this.extractParagraphs();
-            
             // DOM要素のサイズが確定するまで少し待つ
             setTimeout(() => {
                 this.setupMeasure();
@@ -334,6 +380,7 @@ function toZenkaku(str) {
         extractParagraphsFromPayLoad(payload) {
             this.paragraphs = [];
             const elements = Array.from(payload);
+            let foundTitle = '';
             elements.forEach(element => {
                 if (element.tagName === 'H2' || element.tagName === 'H3') {
                     // h2/h3のテキスト抽出を強化
@@ -363,18 +410,24 @@ function toZenkaku(str) {
                         content: zenkakuHeading,
                         hasIndent: false
                     });
+                    // 最初のh2をタイトルとして記憶
+                    if (!foundTitle && element.tagName === 'H2' && zenkakuHeading) {
+                        foundTitle = zenkakuHeading;
+                    }
                 } else if (element.tagName === 'P') {
                     // <p><br></p> のような空行を検出
                     const isEmptyLine =
                         (element.childNodes.length === 1 && element.childNodes[0].tagName === 'BR') ||
                         (element.innerHTML.trim() === '<br>' || element.innerHTML.trim() === '' || element.textContent.replace(/[\s\u3000]/g, '') === '');
+                    let pid = element.getAttribute && element.getAttribute('id') ? element.getAttribute('id') : null;
                     if (isEmptyLine) {
                         this.paragraphs.push({
                             type: 'paragraph',
                             tag: 'p',
                             content: '',
                             hasIndent: false, // 空行は字下げなし
-                            isEmpty: true
+                            isEmpty: true,
+                            id: pid
                         });
                     } else {
                         // 先頭の字下げ文字（全角・半角スペース・タブ等）を1文字削除
@@ -384,7 +437,8 @@ function toZenkaku(str) {
                             tag: 'p',
                             content: toZenkaku(text),
                             hasIndent: true,
-                            isEmpty: false
+                            isEmpty: false,
+                            id: pid
                         });
                     }
                 } else if (element.tagName === 'HR' && element.classList.contains('section-separator')) {
@@ -396,10 +450,16 @@ function toZenkaku(str) {
                     });
                 }
             });
+            // タイトルセット
+            this.title = foundTitle || '';
+            if (this.topBarTitle) {
+                this.topBarTitle.textContent = this.title || 'タイトル';
+            }
             this.log(`段落抽出完了: ${this.paragraphs.length}個の段落`);
             this.paragraphs.forEach((para, i) => {
                 this.log(`${i + 1}: ${para.type} \"${para.content ? para.content.substring(0, 20) : ''}...\"`);
             });
+
         }
 
         extractParagraphs() {
@@ -455,9 +515,22 @@ function toZenkaku(str) {
             this.book.innerHTML = `<div class='page visible'><div class="content">${content}</div></div>`;
         }
 
-        addPage(content) {
-            this.pages.push(content)
-            this.log(`ページ${this.pages.length}を作成しました`);
+        addPage(content, startParaIdx, endParaIdx) {
+            this.pages.push(content);
+            // ページ内の最初と最後のid（p, heading, separatorも含む）を記録
+            let startId = null, endId = null;
+            for (let i = startParaIdx; i <= endParaIdx; i++) {
+                const para = this.paragraphs[i];
+                if (para && para.id) {
+                    if (startId === null) startId = para.id;
+                    endId = para.id;
+                }
+            }
+            this.pageMeta.push({ startId, endId, startParaIdx, endParaIdx });
+            this.log(`ページ${this.pages.length}を作成しました (startId=${startId}, endId=${endId}, startParaIdx=${startParaIdx}, endParaIdx=${endParaIdx})`);
+
+            // デバッグ用: pageMetaを表示
+            this.displayPageMetaDebug();
 
             if (this.totalPagesSpan) {
                 this.totalPagesSpan.textContent = this.pages.length;
@@ -465,6 +538,29 @@ function toZenkaku(str) {
             // ボトムバーのトータルページも更新
             const totalPageIndicator = document.getElementById('total-page-indicator');
             if (totalPageIndicator) totalPageIndicator.textContent = this.pages.length.toString();
+        }
+
+        // デバッグ用: pageMetaを表示
+        displayPageMetaDebug() {
+            // デバッグパネル内に表示
+            let debugPanel = document.getElementById('debug-panel');
+            if (!debugPanel) return;
+            let debugDiv = document.getElementById('page-meta-debug');
+            if (!debugDiv) {
+                debugDiv = document.createElement('div');
+                debugDiv.id = 'page-meta-debug';
+                debugDiv.style.whiteSpace = 'pre';
+                debugDiv.style.fontSize = '12px';
+                debugDiv.style.background = '#f8f8f8';
+                debugDiv.style.border = '1px solid #ccc';
+                debugDiv.style.margin = '8px 0';
+                debugDiv.style.padding = '4px';
+                debugDiv.style.maxHeight = '120px';
+                debugDiv.style.overflowY = 'auto';
+                // debug-panelの一番下に挿入
+                debugPanel.appendChild(debugDiv);
+            }
+            debugDiv.textContent = '[pageMeta debug]\n' + this.pageMeta.map((meta, i) => `Page ${i+1}: startId=${meta.startId}, endId=${meta.endId}, startParaIdx=${meta.startParaIdx}, endParaIdx=${meta.endParaIdx}`).join('\n');
         }
         displayCurrentPage() {
             if (this.pages.length === 0) {
@@ -564,12 +660,16 @@ function toZenkaku(str) {
                 parentContentWidth = this.viewer.clientWidth - 40; // 余白を引いた幅
             }
 
+            // ページの開始段落indexを記録
+            let pageStartParaIdx = this.currentParagraphIndex;
+
             while (true) {
                 if (this.currentParagraphIndex >= this.paragraphs.length) {
                     // ★最後のページが未追加なら追加
                     const finalHTML = this.completedParagraphs.join('');
                     if (finalHTML && (this.pages.length === 0 || this.pages[this.pages.length - 1] !== finalHTML)) {
-                        this.addPage(finalHTML);
+                        // ページの開始・終了段落indexを記録
+                        this.addPage(finalHTML, pageStartParaIdx, this.currentParagraphIndex - 1);
                     }
                     this.log('全段落処理完了');
                     break;
@@ -691,7 +791,8 @@ function toZenkaku(str) {
                 // 改ページ判定
                 if (pageFull) {
                     this.log(`🚨 改ページ必要！ ${this.totalLineCount}行 >= ${this.maxAllowedLines}行`);
-                    this.addPage(finalAllHTML);
+                    // ページの開始・終了段落indexを記録
+                    this.addPage(finalAllHTML, pageStartParaIdx, this.currentParagraphIndex);
 
                     // 次ページの準備
                     this.completedParagraphs = [];
@@ -710,6 +811,8 @@ function toZenkaku(str) {
                         // 分断された場合はcurrentParagraphContentのみリセット
                         this.currentParagraphContent = '';
                     }
+                    // 次ページの開始段落indexを記録
+                    pageStartParaIdx = this.currentParagraphIndex;
                     this.log(`🔄 改ページ完了: バッファ残り="${this._paragraphBuffer}"`);
                     continue; // ←再帰の代わりにループ継続
                 }
@@ -787,9 +890,28 @@ function toZenkaku(str) {
 
         // 3. ページ再生成用メソッド
         regeneratePages() {
+            // 現在ページのstartIdを保存
+            let restoreStartId = null;
+            if (this.pageMeta && this.pageMeta.length > 0 && this.currentPageIndex < this.pageMeta.length) {
+                restoreStartId = this.pageMeta[this.currentPageIndex]?.startId;
+            }
             this.resetPagesAndState();
             this.setupMeasure();
             this.stepExecution();
+            // ページ再生成後、startIdで復元
+            if (restoreStartId) {
+                let foundIdx = 0;
+                for (let i = 0; i < this.pageMeta.length; i++) {
+                    if (this.pageMeta[i].startId === restoreStartId) {
+                        foundIdx = i;
+                        break;
+                    }
+                }
+                this.currentPageIndex = foundIdx;
+            } else {
+                this.currentPageIndex = 0;
+            }
+            this.displayCurrentPage();
         }
 
                 // reset()も共通リセットを利用
@@ -841,9 +963,10 @@ function toZenkaku(str) {
             // ↓ここから追加
             const viewer = this.viewer;
             const bottomBar = document.getElementById('bottom-bar');
+            const topBar = this.topBar;
             let barVisible = false;
 
-            // 中央付近タップでバー表示/非表示
+            // 中央付近タップで上下バー表示/非表示
             viewer.addEventListener('click', (e) => {
                 const rect = viewer.getBoundingClientRect();
                 const x = e.clientX - rect.left;
@@ -855,7 +978,18 @@ function toZenkaku(str) {
                 ) {
                     barVisible = !barVisible;
                     bottomBar.classList.toggle('hidden', !barVisible);
+                    topBar.classList.toggle('hidden', !barVisible);
                 }
+            });
+            // ハンバーガーメニュークリック（今はダミー）
+            document.getElementById('topbar-menu').addEventListener('click', () => {
+                this.log('ハンバーガーメニュークリック');
+                // 必要ならここでメニュー表示
+            });
+            // ブラウザアイコンクリック（今はダミー）
+            document.getElementById('topbar-browser').addEventListener('click', () => {
+                this.log('ブラウザアイコンクリック');
+                // 必要ならここで外部リンク等
             });
 
             // 文字サイズ変更
@@ -954,6 +1088,6 @@ function toZenkaku(str) {
     }
 
     window.addEventListener('load', () => { new LineCountDebug(); });
-    </script>
+</script>
 </body>
 </html>

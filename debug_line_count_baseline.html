@@ -520,6 +520,7 @@ class DebugManager {
             setTimeout(() => {
                 this.setupMeasure();
                 this.initEventListeners();
+                this.debugManager.setupDebugUI();
                 this.log('初期化完了');
             }, 100);
         }
@@ -982,9 +983,7 @@ class DebugManager {
                 this.totalLineCount = 1;
             }
             
-            if (this.currentLinesSpan) {
-                this.currentLinesSpan.textContent = this.totalLineCount;
-            }
+            this.debugManager.updateCurrentLines(this.totalLineCount);
         }
 
         generateHTML(paragraph, content) {
@@ -1010,10 +1009,10 @@ class DebugManager {
             this.stepExecution();
         }
 
-                // reset()も共通リセットを利用
+        // reset()も共通リセットを利用
         reset() {
             this.resetPagesAndState();
-            this.debugLog.innerHTML = '';
+            this.debugManager.clearLog();
             this.log('リセット完了');
             this.setupMeasure();
             this.displayCurrentPage();

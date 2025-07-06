@@ -318,24 +318,179 @@ function toZenkaku(str) {
     });
 }
 
+/**
+ * DebugManager - デバッグ情報の管理とログ出力を担当
+ */
+class DebugManager {
+    constructor() {
+        this.debugLog = document.getElementById('debug-log');
+        this.maxLinesSpan = document.getElementById('max-lines');
+        this.currentLinesSpan = document.getElementById('current-lines');
+        this.currentElementSpan = document.getElementById('current-element');
+        this.currentPageSpan = document.getElementById('current-page');
+        this.totalPagesSpan = document.getElementById('total-pages');
+        this.pageIdRangeSpan = document.getElementById('page-id-range');
+    }
+
+    /**
+     * ログメッセージを出力
+     */
+    log(message) {
+        const entry = document.createElement('div');
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        this.debugLog.appendChild(entry);
+        this.debugLog.scrollTop = this.debugLog.scrollHeight;
+    }
+
+    /**
+     * 最大行数を更新
+     */
+    updateMaxLines(maxLines) {
+        if (this.maxLinesSpan) {
+            this.maxLinesSpan.textContent = maxLines;
+        }
+    }
+
+    /**
+     * 現在行数を更新
+     */
+    updateCurrentLines(currentLines) {
+        if (this.currentLinesSpan) {
+            this.currentLinesSpan.textContent = currentLines;
+        }
+    }
+
+    /**
+     * 現在ページを更新
+     */
+    updateCurrentPage(currentPage) {
+        if (this.currentPageSpan) {
+            this.currentPageSpan.textContent = currentPage;
+        }
+    }
+
+    /**
+     * 総ページ数を更新
+     */
+    updateTotalPages(totalPages) {
+        if (this.totalPagesSpan) {
+            this.totalPagesSpan.textContent = totalPages;
+        }
+    }
+
+    /**
+     * ページID範囲を更新
+     */
+    updatePageIdRange(startId, endId) {
+        if (this.pageIdRangeSpan) {
+            const idRange = startId && endId ? 
+                `${startId} - ${endId}` : 
+                (startId || endId || '-');
+            this.pageIdRangeSpan.textContent = idRange;
+        }
+    }
+
+    /**
+     * 現在の処理要素を更新
+     */
+    updateCurrentElement(element) {
+        if (this.currentElementSpan) {
+            this.currentElementSpan.textContent = element;
+        }
+    }
+
+    /**
+     * ページを追加した際のUI更新
+     */
+    onPageAdded(pageNumber, totalPages, startId = '', endId = '') {
+        this.updateTotalPages(totalPages);
+        this.log(`ページ${pageNumber}を作成しました (ID: ${startId} - ${endId})`);
+        
+        // ボトムバーのトータルページも更新
+        const totalPageIndicator = document.getElementById('total-page-indicator');
+        if (totalPageIndicator) {
+            totalPageIndicator.textContent = totalPages.toString();
+        }
+    }
+
+    /**
+     * 現在ページ表示時のUI更新
+     */
+    onPageDisplayed(currentPage, totalPages, pageInfo = null) {
+        this.updateCurrentPage(currentPage);
+        
+        // ボトムバーの現在ページも更新
+        const currentPageIndicator = document.getElementById('current-page-indicator');
+        if (currentPageIndicator) {
+            currentPageIndicator.textContent = currentPage.toString();
+        }
+        
+        const totalPageIndicator = document.getElementById('total-page-indicator');
+        if (totalPageIndicator) {
+            totalPageIndicator.textContent = totalPages.toString();
+        }
+        
+        // ページID範囲を表示
+        if (pageInfo) {
+            this.updatePageIdRange(pageInfo.startId, pageInfo.endId);
+        }
+    }
+
+    /**
+     * ページがない場合のUI更新
+     */
+    onNoPages() {
+        this.log('ページがありません');
+        // ページインジケータもリセット
+        const currentPageIndicator = document.getElementById('current-page-indicator');
+        const totalPageIndicator = document.getElementById('total-page-indicator');
+        if (currentPageIndicator) currentPageIndicator.textContent = '0';
+        if (totalPageIndicator) totalPageIndicator.textContent = '0';
+        this.updatePageIdRange('', '');
+    }
+
+    /**
+     * ログをクリップボードにコピー
+     */
+    copyLog() {
+        const logText = Array.from(this.debugLog.children)
+            .map(entry => entry.textContent)
+            .join('\n');
+        
+        navigator.clipboard.writeText(logText).then(() => {
+            this.log('ログをクリップボードにコピーしました');
+        }).catch(err => {
+            this.log('コピーに失敗しました: ' + err);
+        });
+    }
+
+    /**
+     * ログをクリア
+     */
+    clearLog() {
+        this.debugLog.innerHTML = '';
+    }
+
+    /**
+     * デバッグUI全体の初期化
+     */
+    setupDebugUI() {
+        this.log('デバッグUI初期化完了');
+    }
+}
+
     class LineCountDebug {
         title = '';
         constructor() {
             this.viewer = document.getElementById('viewer');
             this.book = document.getElementById('book');
-            this.debugLog = document.getElementById('debug-log');
             this.source = document.getElementById('source-content');
 
             this.topBar = document.getElementById('top-bar');
             this.topBarTitle = document.getElementById('top-bar-title');
             
-            // 安全にDOM要素を取得
-            this.maxLinesSpan = document.getElementById('max-lines');
-            this.currentLinesSpan = document.getElementById('current-lines');
-            this.currentElementSpan = document.getElementById('current-element');
-            this.currentPageSpan = document.getElementById('current-page');
-            this.totalPagesSpan = document.getElementById('total-pages');
-            this.pageIdRangeSpan = document.getElementById('page-id-range');
+            // DebugManagerインスタンス作成
+            this.debugManager = new DebugManager();
             
             this.maxAllowedLines = 0;
             this.currentLineCount = 1;
@@ -477,33 +632,15 @@ function toZenkaku(str) {
                 // 横幅から最大行数を計算
                 this.maxAllowedLines = Math.floor(contentWidth / lineHeightPx);
                 
-                if (this.maxLinesSpan) {
-                    this.maxLinesSpan.textContent = this.maxAllowedLines;
-                }
-                
-                this.log(`計算値: maxLines=${this.maxAllowedLines}行`);
+                this.debugManager.updateMaxLines(this.maxAllowedLines);
+                this.debugManager.log(`計算値: maxLines=${this.maxAllowedLines}行`);
             } catch (error) {
-                this.log(`エラー: ${error.message}`);
+                this.debugManager.log(`エラー: ${error.message}`);
             }
         }
 
         log(message) {
-            const entry = document.createElement('div');
-            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            this.debugLog.appendChild(entry);
-            this.debugLog.scrollTop = this.debugLog.scrollHeight;
-        }
-
-        copyLog() {
-            const logText = Array.from(this.debugLog.children)
-                .map(entry => entry.textContent)
-                .join('\n');
-            
-            navigator.clipboard.writeText(logText).then(() => {
-                this.log('ログをクリップボードにコピーしました');
-            }).catch(err => {
-                this.log('コピーに失敗しました: ' + err);
-            });
+            this.debugManager.log(message);
         }
 
         displayCurrentContent(content) {
@@ -513,45 +650,19 @@ function toZenkaku(str) {
         addPage(content, startId = '', endId = '') {
             this.pages.push(content);
             this.pageInfos.push({ startId, endId });
-            this.log(`ページ${this.pages.length}を作成しました (ID: ${startId} - ${endId})`);
-
-            if (this.totalPagesSpan) {
-                this.totalPagesSpan.textContent = this.pages.length;
-            }
-            // ボトムバーのトータルページも更新
-            const totalPageIndicator = document.getElementById('total-page-indicator');
-            if (totalPageIndicator) totalPageIndicator.textContent = this.pages.length.toString();
+            this.debugManager.onPageAdded(this.pages.length, this.pages.length, startId, endId);
         }
         displayCurrentPage() {
             if (this.pages.length === 0) {
-                this.log('ページがありません');
-                // ページインジケータもリセット
-                const currentPageIndicator = document.getElementById('current-page-indicator');
-                const totalPageIndicator = document.getElementById('total-page-indicator');
-                if (currentPageIndicator) currentPageIndicator.textContent = '0';
-                if (totalPageIndicator) totalPageIndicator.textContent = '0';
-                if (this.pageIdRangeSpan) this.pageIdRangeSpan.textContent = '-';
+                this.debugManager.onNoPages();
                 return;
             }
 
             const content = this.pages[this.currentPageIndex];
             this.book.innerHTML = `<div class='page visible'><div class="content">${content}</div></div>`;
 
-            if (this.currentPageSpan) {
-                this.currentPageSpan.textContent = this.currentPageIndex + 1;
-            }
-            // ボトムバーの現在ページも更新
-            const currentPageIndicator = document.getElementById('current-page-indicator');
-            if (currentPageIndicator) currentPageIndicator.textContent = (this.currentPageIndex + 1).toString();
-            
-            // ページID範囲を表示
-            if (this.pageIdRangeSpan && this.pageInfos[this.currentPageIndex]) {
-                const pageInfo = this.pageInfos[this.currentPageIndex];
-                const idRange = pageInfo.startId && pageInfo.endId ? 
-                    `${pageInfo.startId} - ${pageInfo.endId}` : 
-                    (pageInfo.startId || pageInfo.endId || '-');
-                this.pageIdRangeSpan.textContent = idRange;
-            }
+            const pageInfo = this.pageInfos[this.currentPageIndex];
+            this.debugManager.onPageDisplayed(this.currentPageIndex + 1, this.pages.length, pageInfo);
         }
 
         nextPage() {
@@ -932,7 +1043,7 @@ function toZenkaku(str) {
             });
 
             document.getElementById('copy-log-btn').addEventListener('click', () => {
-                this.copyLog();
+                this.debugManager.copyLog();
             });
 
             document.getElementById('prev-page-btn').addEventListener('click', () => {

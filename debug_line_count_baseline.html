@@ -277,17 +277,6 @@
         </div>
     </div>
     <div id="source-content" style="display: none;">
-        <h2>吾輩は猫である</h2>
-        <p>吾輩は猫である。名前はまだ無い。</p>
-        <p>どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。吾輩はここで始めて人間というものを見た。しかもあとで聞くとそれは書生という人間中で一番獰悪な種族であったそうだ。この書生というのは時々我々を捕えて煮て食うという話である。しかしその当時は何という考もなかったから別段恐しいとも思わなかった。ただ彼の掌に載せられてスーと持ち上げられた時何だかフワフワした感じがあったばかりである。掌の上で少し落ちついて書生の顔を見たのがいわゆる人間というものの見始であろう。この時妙なものだと思った感じが今でも残っている。第一毛をもって装飾されべきはずの顔がつるつるしてまるで薬缶だ。その後猫にもだいぶ逢ったがこんな片輪には一度も出会わした事がない。のみならず顔の真中が余りに突起している。</p>
-        <p>そうしてその穴の中から時々ぷうぷうと煙を吹く。どうも咽せぽくて実に弱った。これが人間の飲む煙草というものである事はようやくこの頃知った。</p>
-        <p>行数調整の行です。</p>
-        <p>さらに続きの段落です。これは新しい段落として表示されるはずです。この段落も、ページ先頭でなければ行頭が字下げされます。長い文章になるように文字数を増やして、複数行にわたる段落の処理をテストします。縦書きでの改行動作が正しく検出され、ページ分割のロジックが期待通りに動作することを確認したいと思います。</p>
-        <p>短めの段落もいくつか追加してみます。</p>
-        <p>これでどうでしょうか。</p>
-        <h3>新しい章の開始</h3>
-        <p>ここから新しい章が始まる場合を想定しています。この段落も、ページの途中で開始した場合は字下げされますが、ページ先頭に来た場合は字下げされません。見出しの後の段落は適切に処理されるでしょうか。長めのテキストを用意して、複数行にわたる表示をテストします。</p>
-        <p>長い段落の続きのテキストです。このテキストがページをまたぐと、次のページの先頭に来た際に字下げされないように処理します。これにより、読書体験がより自然になります。縦書きレイアウトでの改行検出とページ分割が正確に動作し、実用的なビューワーを作成できることを目指しています。文字数をさらに増やして、より多くの行数での動作確認を行います。</p>
     </div>
 
     <div id="debug-panel">
@@ -297,6 +286,7 @@
             <div>現在行数: <span id="current-lines">-</span>行</div>
             <div>現在ページ: <span id="current-page">1</span> / <span id="total-pages">1</div>
             <div>処理中: <span id="current-element">-</span></div>
+            <div>ページID範囲: <span id="page-id-range">-</span></div>
         </div>
         
         <div id="step-controls">E
@@ -345,13 +335,14 @@ function toZenkaku(str) {
             this.currentElementSpan = document.getElementById('current-element');
             this.currentPageSpan = document.getElementById('current-page');
             this.totalPagesSpan = document.getElementById('total-pages');
+            this.pageIdRangeSpan = document.getElementById('page-id-range');
             
             this.maxAllowedLines = 0;
             this.currentLineCount = 1;
             
             // ページ管理
             this.pages = []; // 各ページのHTML内容
-            this.pageMeta = []; // 各ページの{startId, endId}
+            this.pageInfos = []; // 各ページのID情報（開始ID、終了ID）
             this.currentPageIndex = 0;
             
             // 元のHTMLから段落データを抽出
@@ -368,7 +359,8 @@ function toZenkaku(str) {
 
         init() {
             // 元のHTMLから段落を抽出
-            this.extractParagraphs();
+            //this.extractParagraphs();
+            
             // DOM要素のサイズが確定するまで少し待つ
             setTimeout(() => {
                 this.setupMeasure();
@@ -419,7 +411,10 @@ function toZenkaku(str) {
                     const isEmptyLine =
                         (element.childNodes.length === 1 && element.childNodes[0].tagName === 'BR') ||
                         (element.innerHTML.trim() === '<br>' || element.innerHTML.trim() === '' || element.textContent.replace(/[\s\u3000]/g, '') === '');
-                    let pid = element.getAttribute && element.getAttribute('id') ? element.getAttribute('id') : null;
+                    
+                    // id属性を取得
+                    const paragraphId = element.getAttribute('id') || '';
+                    
                     if (isEmptyLine) {
                         this.paragraphs.push({
                             type: 'paragraph',
@@ -427,7 +422,7 @@ function toZenkaku(str) {
                             content: '',
                             hasIndent: false, // 空行は字下げなし
                             isEmpty: true,
-                            id: pid
+                            id: paragraphId
                         });
                     } else {
                         // 先頭の字下げ文字（全角・半角スペース・タブ等）を1文字削除
@@ -438,7 +433,7 @@ function toZenkaku(str) {
                             content: toZenkaku(text),
                             hasIndent: true,
                             isEmpty: false,
-                            id: pid
+                            id: paragraphId
                         });
                     }
                 } else if (element.tagName === 'HR' && element.classList.contains('section-separator')) {
@@ -457,9 +452,9 @@ function toZenkaku(str) {
             }
             this.log(`段落抽出完了: ${this.paragraphs.length}個の段落`);
             this.paragraphs.forEach((para, i) => {
-                this.log(`${i + 1}: ${para.type} \"${para.content ? para.content.substring(0, 20) : ''}...\"`);
+                const idInfo = para.id ? ` [ID: ${para.id}]` : '';
+                this.log(`${i + 1}: ${para.type}${idInfo} \"${para.content ? para.content.substring(0, 20) : ''}...\"`);
             });
-
         }
 
         extractParagraphs() {
@@ -515,22 +510,10 @@ function toZenkaku(str) {
             this.book.innerHTML = `<div class='page visible'><div class="content">${content}</div></div>`;
         }
 
-        addPage(content, startParaIdx, endParaIdx) {
+        addPage(content, startId = '', endId = '') {
             this.pages.push(content);
-            // ページ内の最初と最後のid（p, heading, separatorも含む）を記録
-            let startId = null, endId = null;
-            for (let i = startParaIdx; i <= endParaIdx; i++) {
-                const para = this.paragraphs[i];
-                if (para && para.id) {
-                    if (startId === null) startId = para.id;
-                    endId = para.id;
-                }
-            }
-            this.pageMeta.push({ startId, endId, startParaIdx, endParaIdx });
-            this.log(`ページ${this.pages.length}を作成しました (startId=${startId}, endId=${endId}, startParaIdx=${startParaIdx}, endParaIdx=${endParaIdx})`);
-
-            // デバッグ用: pageMetaを表示
-            this.displayPageMetaDebug();
+            this.pageInfos.push({ startId, endId });
+            this.log(`ページ${this.pages.length}を作成しました (ID: ${startId} - ${endId})`);
 
             if (this.totalPagesSpan) {
                 this.totalPagesSpan.textContent = this.pages.length;
@@ -538,29 +521,6 @@ function toZenkaku(str) {
             // ボトムバーのトータルページも更新
             const totalPageIndicator = document.getElementById('total-page-indicator');
             if (totalPageIndicator) totalPageIndicator.textContent = this.pages.length.toString();
-        }
-
-        // デバッグ用: pageMetaを表示
-        displayPageMetaDebug() {
-            // デバッグパネル内に表示
-            let debugPanel = document.getElementById('debug-panel');
-            if (!debugPanel) return;
-            let debugDiv = document.getElementById('page-meta-debug');
-            if (!debugDiv) {
-                debugDiv = document.createElement('div');
-                debugDiv.id = 'page-meta-debug';
-                debugDiv.style.whiteSpace = 'pre';
-                debugDiv.style.fontSize = '12px';
-                debugDiv.style.background = '#f8f8f8';
-                debugDiv.style.border = '1px solid #ccc';
-                debugDiv.style.margin = '8px 0';
-                debugDiv.style.padding = '4px';
-                debugDiv.style.maxHeight = '120px';
-                debugDiv.style.overflowY = 'auto';
-                // debug-panelの一番下に挿入
-                debugPanel.appendChild(debugDiv);
-            }
-            debugDiv.textContent = '[pageMeta debug]\n' + this.pageMeta.map((meta, i) => `Page ${i+1}: startId=${meta.startId}, endId=${meta.endId}, startParaIdx=${meta.startParaIdx}, endParaIdx=${meta.endParaIdx}`).join('\n');
         }
         displayCurrentPage() {
             if (this.pages.length === 0) {
@@ -570,6 +530,7 @@ function toZenkaku(str) {
                 const totalPageIndicator = document.getElementById('total-page-indicator');
                 if (currentPageIndicator) currentPageIndicator.textContent = '0';
                 if (totalPageIndicator) totalPageIndicator.textContent = '0';
+                if (this.pageIdRangeSpan) this.pageIdRangeSpan.textContent = '-';
                 return;
             }
 
@@ -582,6 +543,15 @@ function toZenkaku(str) {
             // ボトムバーの現在ページも更新
             const currentPageIndicator = document.getElementById('current-page-indicator');
             if (currentPageIndicator) currentPageIndicator.textContent = (this.currentPageIndex + 1).toString();
+            
+            // ページID範囲を表示
+            if (this.pageIdRangeSpan && this.pageInfos[this.currentPageIndex]) {
+                const pageInfo = this.pageInfos[this.currentPageIndex];
+                const idRange = pageInfo.startId && pageInfo.endId ? 
+                    `${pageInfo.startId} - ${pageInfo.endId}` : 
+                    (pageInfo.startId || pageInfo.endId || '-');
+                this.pageIdRangeSpan.textContent = idRange;
+            }
         }
 
         nextPage() {
@@ -660,22 +630,29 @@ function toZenkaku(str) {
                 parentContentWidth = this.viewer.clientWidth - 40; // 余白を引いた幅
             }
 
-            // ページの開始段落indexを記録
-            let pageStartParaIdx = this.currentParagraphIndex;
+            // ページのID範囲を追跡 - 配列で全IDを管理
+            let pageIds = [];
 
             while (true) {
                 if (this.currentParagraphIndex >= this.paragraphs.length) {
                     // ★最後のページが未追加なら追加
                     const finalHTML = this.completedParagraphs.join('');
                     if (finalHTML && (this.pages.length === 0 || this.pages[this.pages.length - 1] !== finalHTML)) {
-                        // ページの開始・終了段落indexを記録
-                        this.addPage(finalHTML, pageStartParaIdx, this.currentParagraphIndex - 1);
+                        const startId = pageIds.length > 0 ? pageIds[0] : '';
+                        const endId = pageIds.length > 0 ? pageIds[pageIds.length - 1] : '';
+                        this.addPage(finalHTML, startId, endId);
                     }
                     this.log('全段落処理完了');
                     break;
                 }
 
                 const currentPara = this.paragraphs[this.currentParagraphIndex];
+
+                // ページ開始時：段落にIDがあれば記録（現在のページがまだ空の場合のみ）
+                if (this.completedParagraphs.length === 0 && currentPara.id && !pageIds.includes(currentPara.id)) {
+                    pageIds.push(currentPara.id);
+                    this.log(`🏷️ ページ開始ID記録: ${currentPara.id}`);
+                }
 
                 // ページまたぎ時のバッファ
                 if (!this._paragraphBuffer) {
@@ -712,6 +689,13 @@ function toZenkaku(str) {
                     const finalAllHTML = this.completedParagraphs.join('') + finalHTML;
                     this.displayCurrentContent(finalAllHTML);
                     this.completedParagraphs.push(finalHTML);
+                    
+                    // IDを記録（重複チェック）
+                    if (currentPara.id && !pageIds.includes(currentPara.id)) {
+                        pageIds.push(currentPara.id);
+                        this.log(`🏷️ ID記録: ${currentPara.id} (${currentPara.type})`);
+                    }
+                    
                     this.currentParagraphIndex++;
                     this.currentParagraphContent = '';
                     this._paragraphBuffer = null;
@@ -791,13 +775,29 @@ function toZenkaku(str) {
                 // 改ページ判定
                 if (pageFull) {
                     this.log(`🚨 改ページ必要！ ${this.totalLineCount}行 >= ${this.maxAllowedLines}行`);
-                    // ページの開始・終了段落indexを記録
-                    this.addPage(finalAllHTML, pageStartParaIdx, this.currentParagraphIndex);
+                    
+                    // 現在の段落のIDを記録（まだ記録されていない場合）
+                    if (currentPara.id && !pageIds.includes(currentPara.id)) {
+                        pageIds.push(currentPara.id);
+                        this.log(`🏷️ 改ページ前ID記録: ${currentPara.id}`);
+                    }
+                    
+                    const startId = pageIds.length > 0 ? pageIds[0] : '';
+                    const endId = pageIds.length > 0 ? pageIds[pageIds.length - 1] : '';
+                    this.addPage(finalAllHTML, startId, endId);
 
                     // 次ページの準備
                     this.completedParagraphs = [];
                     this.totalLineCount = 1;
                     this.currentParagraphHasIndent = false; // ★分断パラグラフは字下げなし
+                    
+                    // 次ページのID配列をリセット
+                    pageIds = [];
+                    // 分断された段落の場合は同じIDから始まる
+                    if (this._paragraphBuffer && this._paragraphBuffer.length > 0 && currentPara.id) {
+                        pageIds.push(currentPara.id);
+                        this.log(`🏷️ 次ページ継続ID: ${currentPara.id}`);
+                    }
 
                     // currentParagraphContentは進めた状態で
                     // _paragraphBufferは残りを保持
@@ -811,8 +811,6 @@ function toZenkaku(str) {
                         // 分断された場合はcurrentParagraphContentのみリセット
                         this.currentParagraphContent = '';
                     }
-                    // 次ページの開始段落indexを記録
-                    pageStartParaIdx = this.currentParagraphIndex;
                     this.log(`🔄 改ページ完了: バッファ残り="${this._paragraphBuffer}"`);
                     continue; // ←再帰の代わりにループ継続
                 }
@@ -821,6 +819,12 @@ function toZenkaku(str) {
                 if (!this._paragraphBuffer || this._paragraphBuffer.length === 0) {
                     this.completedParagraphs.push(finalHTML);
                     this.log(`段落${this.currentParagraphIndex + 1}完了: ${finalHTML}`);
+
+                    // IDを記録（重複チェック）
+                    if (currentPara.id && !pageIds.includes(currentPara.id)) {
+                        pageIds.push(currentPara.id);
+                        this.log(`🏷️ 段落完了ID記録: ${currentPara.id}`);
+                    }
 
                     this.currentParagraphIndex++;
                     this.currentParagraphContent = '';
@@ -890,28 +894,9 @@ function toZenkaku(str) {
 
         // 3. ページ再生成用メソッド
         regeneratePages() {
-            // 現在ページのstartIdを保存
-            let restoreStartId = null;
-            if (this.pageMeta && this.pageMeta.length > 0 && this.currentPageIndex < this.pageMeta.length) {
-                restoreStartId = this.pageMeta[this.currentPageIndex]?.startId;
-            }
             this.resetPagesAndState();
             this.setupMeasure();
             this.stepExecution();
-            // ページ再生成後、startIdで復元
-            if (restoreStartId) {
-                let foundIdx = 0;
-                for (let i = 0; i < this.pageMeta.length; i++) {
-                    if (this.pageMeta[i].startId === restoreStartId) {
-                        foundIdx = i;
-                        break;
-                    }
-                }
-                this.currentPageIndex = foundIdx;
-            } else {
-                this.currentPageIndex = 0;
-            }
-            this.displayCurrentPage();
         }
 
                 // reset()も共通リセットを利用
@@ -929,6 +914,7 @@ function toZenkaku(str) {
             this.completedParagraphs = [];
             this.totalLineCount = 1;
             this.pages = [];
+            this.pageInfos = [];
             this.currentPageIndex = 0;
             this.book.innerHTML = '';
             this._paragraphBuffer = null;
@@ -1087,7 +1073,10 @@ function toZenkaku(str) {
         }
     }
 
-    window.addEventListener('load', () => { new LineCountDebug(); });
-</script>
+    // ページ読み込み完了後にLineCountDebugを初期化
+    window.addEventListener('load', () => { 
+        new LineCountDebug(); 
+    });
+    </script>
 </body>
 </html>

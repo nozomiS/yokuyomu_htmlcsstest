@@ -479,6 +479,93 @@ class DebugManager {
     }
 }
 
+/**
+ * PageManager - ページデータの管理を担当（制御ロジックは含まない）
+ */
+class PageManager {
+    constructor() {
+        this.pages = []; // 各ページのHTML内容
+        this.pageInfos = []; // 各ページのID情報（開始ID、終了ID）
+    }
+
+    /**
+     * ページを追加（重複チェック付き）
+     */
+    addPage(content, startId = '', endId = '') {
+        // 重複チェック：最後のページと同じ内容なら追加しない
+        if (this.pages.length > 0 && this.pages[this.pages.length - 1] === content) {
+            return false; // 追加されなかった
+        }
+        
+        return forceAddPage(content, startId, endId);
+    }
+
+    /**
+     * ページを強制追加（重複チェックなし）
+     */
+    forceAddPage(content, startId = '', endId = '') {
+        this.pages.push(content);
+        this.pageInfos.push({ startId, endId });
+        return true;
+    }
+
+    /**
+     * 総ページ数を取得
+     */
+    getPageCount() {
+        return this.pages.length;
+    }
+
+    /**
+     * 指定したページのコンテンツを取得
+     */
+    getPageContent(pageIndex) {
+        if (pageIndex >= 0 && pageIndex < this.pages.length) {
+            return this.pages[pageIndex];
+        }
+        return null;
+    }
+
+    /**
+     * 指定したページの情報を取得
+     */
+    getPageInfo(pageIndex) {
+        if (pageIndex >= 0 && pageIndex < this.pageInfos.length) {
+            return this.pageInfos[pageIndex];
+        }
+        return null;
+    }
+
+    /**
+     * ページが存在するかチェック
+     */
+    hasPages() {
+        return this.pages.length > 0;
+    }
+
+    /**
+     * 有効なページインデックスかチェック
+     */
+    isValidPageIndex(pageIndex) {
+        return pageIndex >= 0 && pageIndex < this.pages.length;
+    }
+
+    /**
+     * リセット
+     */
+    reset() {
+        this.pages = [];
+        this.pageInfos = [];
+    }
+
+    /**
+     * 最後に追加されたページの内容を取得（重複チェック用）
+     */
+    getLastPageContent() {
+        return this.pages.length > 0 ? this.pages[this.pages.length - 1] : null;
+    }
+}
+
     class LineCountDebug {
         title = '';
         constructor() {
@@ -489,16 +576,15 @@ class DebugManager {
             this.topBar = document.getElementById('top-bar');
             this.topBarTitle = document.getElementById('top-bar-title');
             
-            // DebugManagerインスタンス作成
+            // DebugManagerとPageManagerインスタンス作成
             this.debugManager = new DebugManager();
+            this.pageManager = new PageManager();
+            
+            // ページ制御管理
+            this.currentPageIndex = 0;
             
             this.maxAllowedLines = 0;
             this.currentLineCount = 1;
-            
-            // ページ管理
-            this.pages = []; // 各ページのHTML内容
-            this.pageInfos = []; // 各ページのID情報（開始ID、終了ID）
-            this.currentPageIndex = 0;
             
             // 元のHTMLから段落データを抽出
             this.paragraphs = [];
@@ -649,28 +735,32 @@ class DebugManager {
         }
 
         addPage(content, startId = '', endId = '') {
-            this.pages.push(content);
-            this.pageInfos.push({ startId, endId });
-            this.debugManager.onPageAdded(this.pages.length, this.pages.length, startId, endId);
+            const wasAdded = this.pageManager.addPage(content, startId, endId);
+            if (wasAdded) {
+                this.debugManager.onPageAdded(this.pageManager.getPageCount(), this.pageManager.getPageCount(), startId, endId);
+            }
+            return wasAdded;
         }
         displayCurrentPage() {
-            if (this.pages.length === 0) {
+            if (!this.pageManager.hasPages()) {
                 this.debugManager.onNoPages();
                 return;
             }
 
-            const content = this.pages[this.currentPageIndex];
-            this.book.innerHTML = `<div class='page visible'><div class="content">${content}</div></div>`;
-
-            const pageInfo = this.pageInfos[this.currentPageIndex];
-            this.debugManager.onPageDisplayed(this.currentPageIndex + 1, this.pages.length, pageInfo);
+            const content = this.pageManager.getPageContent(this.currentPageIndex);
+            const pageInfo = this.pageManager.getPageInfo(this.currentPageIndex);
+            
+            if (content) {
+                this.book.innerHTML = `<div class='page visible'><div class="content">${content}</div></div>`;
+                this.debugManager.onPageDisplayed(this.currentPageIndex + 1, this.pageManager.getPageCount(), pageInfo);
+            }
         }
 
         nextPage() {
-            if (this.currentPageIndex < this.pages.length - 1) {
+            if (this.currentPageIndex < this.pageManager.getPageCount() - 1) {
                 this.currentPageIndex++;
                 this.displayCurrentPage();
-                this.log(`次ページ: ${this.currentPageIndex + 1}/${this.pages.length}`);
+                this.log(`次ページ: ${this.currentPageIndex + 1}/${this.pageManager.getPageCount()}`);
             }
         }
 
@@ -678,7 +768,7 @@ class DebugManager {
             if (this.currentPageIndex > 0) {
                 this.currentPageIndex--;
                 this.displayCurrentPage();
-                this.log(`前ページ: ${this.currentPageIndex + 1}/${this.pages.length}`);
+                this.log(`前ページ: ${this.currentPageIndex + 1}/${this.pageManager.getPageCount()}`);
             }
         }
 
@@ -749,7 +839,7 @@ class DebugManager {
                 if (this.currentParagraphIndex >= this.paragraphs.length) {
                     // ★最後のページが未追加なら追加
                     const finalHTML = this.completedParagraphs.join('');
-                    if (finalHTML && (this.pages.length === 0 || this.pages[this.pages.length - 1] !== finalHTML)) {
+                    if (finalHTML) {
                         const startId = pageIds.length > 0 ? pageIds[0] : '';
                         const endId = pageIds.length > 0 ? pageIds[pageIds.length - 1] : '';
                         this.addPage(finalHTML, startId, endId);
@@ -773,7 +863,7 @@ class DebugManager {
 
                 // ページ先頭の字下げ制御
                 if (this.currentParagraphContent === '') {
-                    if (this.completedParagraphs.length === 0 && this.pages.length > 0) {
+                    if (this.completedParagraphs.length === 0 && this.pageManager.getPageCount() > 0) {
                         this.currentParagraphHasIndent = false;
                     } else {
                         this.currentParagraphHasIndent = currentPara.hasIndent;
@@ -1023,8 +1113,7 @@ class DebugManager {
             this.currentParagraphContent = '';
             this.completedParagraphs = [];
             this.totalLineCount = 1;
-            this.pages = [];
-            this.pageInfos = [];
+            this.pageManager.reset();
             this.currentPageIndex = 0;
             this.book.innerHTML = '';
             this._paragraphBuffer = null;
